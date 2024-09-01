@@ -3,42 +3,88 @@
 <head>
     <title>Tagger</title>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet"></link>
     <link href="https://maxcdn.bootstrapcdn.com/bootswatch/3.3.7/cerulean/bootstrap.min.css" rel="stylesheet"></link>
-</head>
-<body style="height:100%;">
-<nav id="sidebar" style="
+    <style>
+        body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden; /* Prevent scrolling of the body */
+        }
+        #sidebar {
             width: 25%;
             height: 100%;
             float: left;
             z-index: 8000;
-            margin-bottom: 0px;">
+            margin-bottom: 0px;
+        }
+        #content {
+            width: 75%;
+            height: calc(100% - 40px); /* Adjust to leave space for zoom controls */
+            float: right;
+            z-index: 8000;
+            margin-bottom: 0px;
+            overflow: hidden;
+        }
+        #canvas {
+            width: 100%;
+            height: 80%;
+            margin: 0;
+            padding: 0;
+        }
+        #zoomControls {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            background-color: #f8f9fa; /* Background color for better visibility */
+            padding: 10px;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.1); /* Optional shadow for better visibility */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #resizeSlider {
+            width: 60%;
+        }
+        #debugInfo {
+            position: fixed;
+            top: 0;
+            right: 0;
+            background: #fff;
+            padding: 10px;
+            border: 1px solid #ddd;
+            z-index: 9000;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+<nav id="sidebar">
     <div class="panel panel-default" style="height: 100%;">
         <div class="panel-heading">
             <h3 class="panel-title">Labels</h3>
         </div>
         <script>
-        var label = function(id, name) {
-          window.location.replace("/label/" + id + "?name=" + name);
-        }
+            var label = function(id, name) {
+                fetch(`/label/${id}?name=${name}`)
+                    .then(response => response.text())
+                    .then(() => updateLabelList())
+                    .catch(error => console.error('Error updating label:', error));
+            };
         </script>
         <div class="panel-body">
-            <div class="list-group">
+            <div class="list-group" id="labelList">
               {% for label in labels %}
                 <div class="list-group-item">
                     <div class="input-group">
                         <span class="input-group-addon" id="id">{{ label.id }}</span>
                         {% if label.name %}
-                            <text style="background-color:#E5E7E9;" class="form-control custom-control" style="resize:none">{{ label.name }}</text>
+                            <input type="text" value="{{ label.name }}" onchange="label('{{ label.id }}', this.value)" class="form-control" style="background-color:#E5E7E9;"></input>
                             <span class="input-group-btn">
-                                <!-- <button class="btn btn-danger" type="button">-</button> -->
+                                <button class="btn btn-danger" onclick="deleteLabel('{{ label.id }}')" type="button">-</button>
                             </span>
                         {% else %}
-                            <input id= "{{ label.id }}" onkeydown="if (event.keyCode == 13) { label(this.id, this.value); }" type="text" class="form-control" placeholder="label name" autofocus></input>
+                            <input id="{{ label.id }}" onkeydown="if (event.keyCode == 13) { label(this.id, this.value); }" type="text" class="form-control" placeholder="label name" autofocus></input>
                         {% endif %}
-                        <span class="input-group-btn">
-                            <button id= "{{ label.id }}" class="btn btn-danger" onclick="window.location.replace('/remove/' + this.id)" type="button">-</button> if (event.keyCode == 13) { label(this.id, this.value); }
-                        </span>
                     </div>
                 </div>
                 {% endfor %}
@@ -46,117 +92,352 @@
         </div>
     </div>
 </nav>
-<div id="content" class="container" style="
-            width: 75%;
-            height: 100%;
-            float: right;
-            z-index: 8000;
-            margin-bottom:
-            0px;">
-    <div class="row">
-    <text> {{ head }} / {{ len }} </text>
-    {% if not_end %}
-      <a href="/next" class="btn btn-primary" style="float:right;" type="button">
-        <span class="glyphicon glyphicon-arrow-right"></span>
-      </a>
+<div id="content" class="container">
+
+    <div style="overflow: hidden">
+        <canvas id="canvas"></canvas>
+    </div>
+</div>
+<div id="zoomControls">
+    <input type="range" id="resizeSlider" min="10" max="200" value="100">
+    <button id="resetButton" class="btn btn-primary">Reset to 100%</button>
+    <span id="currentScale">100%</span>
+    <button id="downloadButton" class="btn btn-success" style="margin-left: 10px;">Download Image</button>
+    <button id="toggleZoomButton" class="btn btn-info" style="margin-left: 10px;">Toggle Zoom Point</button>
+	<button id="saveCsvButton" class="btn btn-warning" style="margin-left: 10px;">Save CSV</button>
+</div>
+<div style="position: fixed; bottom: 10px; left: 10px;">
+    <!-- Previous Image Button -->
+    {% if not_start %}
+        <a href="/previous" class="btn btn-primary" type="button">
+            <span class="glyphicon glyphicon-arrow-left"></span>
+        </a>
     {% else %}
-      <a href="/next" class="btn btn-primary" style="float:right;" type="button">
-        <span class="glyphicon glyphicon-ok"> </span>
-      </a>
+        <a href="/previous" class="btn btn-primary" type="button">
+            <span class="glyphicon glyphicon-ok"> </span>
+        </a>
     {% endif %}
-    </div>
-    <div style="overflow: scroll">
-        <canvas id="canvas" style="width:100%; height:80%; margin: 0; padding: 0;"></canvas>
-    </div>
-    <!-- <a href="/next" class="btn btn-primary" style="float:left;" type="button">
-      <span class="glyphicon glyphicon-arrow-left"></span>
-    </a> -->
-    <script>
-      var labels = {{ labels|tojson|safe }};
-      var c = document.getElementById("canvas");
-      var ctx = c.getContext("2d");
-      var drawLabels = function(id, xMin, xMax, yMin, yMax) {
+
+    <!-- Next Image Button -->
+    {% if not_end %}
+        <a href="/next" class="btn btn-primary" type="button">
+            <span class="glyphicon glyphicon-arrow-right"></span>
+        </a>
+    {% else %}
+        <a href="/next" class="btn btn-primary" type="button">
+            <span class="glyphicon glyphicon-ok"> </span>
+        </a>
+    {% endif %}
+</div>
+
+<script>
+var labels = {{ labels|tojson|safe }};
+var c = document.getElementById("canvas");
+var ctx = c.getContext("2d");
+var image = new Image();
+var originalWidth, originalHeight;
+var scale = 1;
+var zoomMode = 'top-left'; // Default zoom mode
+
+var offsetX = 0, offsetY = 0;  // Track offsets for dragging
+
+var predefinedLabels = [
+    { name: "Apple", color: "cyan" },
+    { name: "Banana", color: "magenta" },
+    { name: "Peach", color: "green" },
+    { name: "Grapes", color: "yellow" },
+    { name: "Lemon", color: "red" }
+];
+
+function drawLabels(name, xMin, xMax, yMin, yMax, color) {
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.rect(
+        xMin * scale + offsetX,  // Apply offsetX
+        yMin * scale + offsetY,  // Apply offsetY
+        (xMax - xMin) * scale,
+        (yMax - yMin) * scale
+    );
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Set font size proportional to the image width
+    var fontSize = 0.045 * originalWidth; // 4.5% of the image's width
+    ctx.font = `${fontSize * scale}px Arial`;
+    ctx.fillText(name, xMin * scale + offsetX, yMin * scale + offsetY);  // Apply offsets
+}
+
+function setInitialZoom() {
+    var cWidth = c.clientWidth;
+    var cHeight = c.clientHeight;
+
+    // Calculate the scale factors for both dimensions
+    var widthScale = cWidth / originalWidth;
+    var heightScale = cHeight / originalHeight;
+
+    // Use the minimum of these scales to fit the image within the container
+    var newScale = Math.min(widthScale, heightScale);
+
+    // Update the scale value and slider
+    scale = newScale;
+    document.getElementById('resizeSlider').value = Math.round(newScale * 100); // Update slider value
+    document.getElementById('currentScale').innerText = `${Math.round(newScale * 100)}%`; // Update scale display
+
+    // Set the canvas dimensions and redraw the image and labels
+    resizeCanvas();
+}
+
+function resizeCanvas() {
+    var newWidth = originalWidth * scale;
+    var newHeight = originalHeight * scale;
+
+    c.style.width = newWidth + 'px';
+    c.style.height = newHeight + 'px';
+    c.width = newWidth;
+    c.height = newHeight;
+
+    // Clear the canvas and redraw the image and labels
+    ctx.clearRect(0, 0, c.width, c.height);
+
+    // Apply the updated offsets
+    ctx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
+
+    // Redraw all labels with the new scale and offsets
+    labels.forEach(function(label) {
+        drawLabels(label.name, label.xMin, label.xMax, label.yMin, label.yMax, label.color);
+    });
+}
+
+// Dragging logic
+var isDragging = false;
+var lastX, lastY;
+
+c.addEventListener('mousedown', function(e) {
+    if (e.button === 1) { // 1 is the middle mouse button
+        isDragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        e.preventDefault();
+    }
+});
+
+c.addEventListener('mousemove', function(e) {
+    if (isDragging) {
+        var dx = e.clientX - lastX;
+        var dy = e.clientY - lastY;
+
+        // Update offsets
+        offsetX += dx;
+        offsetY += dy;
+
+        // Redraw canvas with updated offsets
+        resizeCanvas();
+
+        lastX = e.clientX;
+        lastY = e.clientY;
+        e.preventDefault();
+    }
+});
+
+c.addEventListener('mouseup', function(e) {
+    if (e.button === 1) {
+        isDragging = false;
+        e.preventDefault();
+    }
+});
+
+function updateDebugInfo() {
+    var cWidth = c.width;
+    var cHeight = c.height;
+    var iWidth = image.width * scale;
+    var iHeight = image.height * scale;
+    // Update debug info here if needed
+}
+
+image.onload = function(e) {
+    originalWidth = image.width;
+    originalHeight = image.height;
+    setInitialZoom(); // Adjust initial zoom
+    window.addEventListener('resize', resizeCanvas);
+};
+
+document.getElementById('resizeSlider').addEventListener('input', function() {
+    scale = this.value / 100;
+    document.getElementById('currentScale').innerText = `${this.value}%`;
+    resizeCanvas();
+});
+
+document.getElementById('resetButton').addEventListener('click', function() {
+    scale = 1;
+    offsetX = 0;  // Reset horizontal offset
+    offsetY = 0;  // Reset vertical offset
+    document.getElementById('resizeSlider').value = 100;
+    document.getElementById('currentScale').innerText = '100%';
+    resizeCanvas();  // Redraw the canvas with the reset values
+});
+
+
+document.getElementById('downloadButton').addEventListener('click', function() {
+    fetch('/save')
+        .then(response => response.text())
+        .then(data => {
+            console.log(data);
+            var link = document.createElement('a');
+            link.download = 'image_with_labels.png';
+            link.href = c.toDataURL('image/png');
+            link.click();
+        })
+        .catch(error => console.error('Error saving CSV:', error));
+});
+
+document.getElementById('toggleZoomButton').addEventListener('click', function() {
+    zoomMode = (zoomMode === 'top-left') ? 'bottom-left' : 'top-left';
+    this.innerText = zoomMode === 'top-left' ? 'Switch to Bottom-Left Zoom' : 'Switch to Top-Left Zoom';
+    resizeCanvas();
+});
+
+function addWheelEventListener(element) {
+    element.addEventListener('wheel', function(event) {
+        event.preventDefault();
+        
+        // Determine the zoom direction based on the scroll direction
+        var zoomDirection = event.deltaY > 0 ? -1 : 1;
+        
+        // Adjust the zoom scale
+        var zoomFactor = 0.1; // Change this value to adjust zoom sensitivity
+        scale += zoomDirection * zoomFactor;
+        
+        // Keep scale within range
+        scale = Math.max(0.1, Math.min(scale, 5)); // Adjust min and max scale as needed
+        
+        // Update the slider and scale display
+        document.getElementById('resizeSlider').value = Math.round(scale * 100);
+        document.getElementById('currentScale').innerText = `${Math.round(scale * 100)}%`;
+        
+        // Resize the canvas to apply the new scale
+        resizeCanvas();
+    });
+}
+
+// Add wheel event listener to #content, #zoomControls, and #sidebar
+addWheelEventListener(document.getElementById('content'));
+addWheelEventListener(document.getElementById('zoomControls'));
+addWheelEventListener(document.getElementById('sidebar'));
+
+var clicked = false;
+var fPoint = {};
+c.onclick = function(e) {
+    var rect = c.getBoundingClientRect();
+    var x = (e.clientX - rect.left - offsetX) / scale;  // Adjust for offsetX
+    var y = (e.clientY - rect.top - offsetY) / scale;   // Adjust for offsetY
+    if (!clicked) {
         ctx.strokeStyle = "pink";
         ctx.fillStyle = "pink";
-        ctx.rect(xMin, yMin, xMax - xMin, yMax - yMin);
-        ctx.lineWidth="3";
-        ctx.stroke();
-        ctx.font = "10px Arial";
-        ctx.fillText("id: " + id, xMin,yMin);
-      };
-      var image = new Image();
-      console.log(image);
-      image.onload = function(e) {
-        ctx.canvas.width = image.width;
-        ctx.canvas.height = image.height;
-        c.width = image.width;
-        c.height = image.height;
-        ctx.drawImage(image, 0, 0);
-        console.log(labels);
-        for (i = 0; i < labels.length; i++){
-            drawLabels(labels[i].id, labels[i].xMin, labels[i].xMax, labels[i].yMin, labels[i].yMax);
-        }
-      };
-      image.style.display="block";
-      image.src = "image/{{ image }}";
+        ctx.beginPath();
+        ctx.arc((x * scale + offsetX), (y * scale + offsetY), 3, 0, 2 * Math.PI, false);
+        ctx.fill();
+        fPoint = { x: x, y: y };
+    } else {
+        var xMin = Math.min(fPoint.x, x);
+        var xMax = Math.max(fPoint.x, x);
+        var yMin = Math.min(fPoint.y, y);
+        var yMax = Math.max(fPoint.y, y);
+        fPoint = {};
+        var predefinedLabel = predefinedLabels[labels.length % predefinedLabels.length];
+        labels.push({
+            id: (labels.length + 1).toString(), // Ensure label IDs are updated correctly
+            name: predefinedLabel.name,
+            xMin: xMin,
+            xMax: xMax,
+            yMin: yMin,
+            yMax: yMax,
+            color: predefinedLabel.color
+        });
+        fetch(`/add/${labels.length}?xMin=${xMin}&xMax=${xMax}&yMin=${yMin}&yMax=${yMax}&color=${predefinedLabel.color}&name=${predefinedLabel.name}`)
+            .then(response => response.text())
+            .then(() => {
+                resizeCanvas();
+                updateLabelList();
+            })
+            .catch(error => console.error('Error adding label:', error));
+    }
+    clicked = !clicked;
+};
 
-      var clicked = false;
-      var fPoint = {};
-      c.onclick = function(e) {
-        console.log(clicked);
-        if (!clicked) {
-            var x = (image.width / c.scrollWidth) * e.offsetX;
-            var y = (image.height / c.scrollHeight) * e.offsetY;
-            console.log(e);
-            ctx.strokeStyle = "pink";
-            ctx.fillStyle = "pink";
-            ctx.beginPath();
-            ctx.arc(x, y, 3, 0, 2*Math.PI, false);
-            ctx.fill();
-            fPoint = {
-              x: x,
-              y: y
-            };
-        } else {
-            var x = (image.width / c.scrollWidth) * e.offsetX;
-            var y = (image.height / c.scrollHeight) * e.offsetY;
-            var xMin;
-            var xMax;
-            var yMin;
-            var yMin;
-            if (x > fPoint.x) {
-                xMax = x;
-                xMin = fPoint.x;
-            } else {
-                xMax = fPoint.x;
-                xMin = x;
-            }
-            if (y > fPoint.y) {
-              yMax = y;
-              yMin = fPoint.y;
-            } else {
-              yMax = fPoint.y;
-              yMin = y;
-            }
-            fPoint = {};
-            window.location.replace("/add/" + (labels.length + 1) +
-            "?xMin=" + xMin +
-            "&xMax=" + xMax +
-            "&yMin=" + yMin +
-            "&yMax=" + yMax);
-        }
-        clicked = !clicked;
-      };
 
-      // document.onkeydown = function(e) {
-      //   if ("key" in e) {
-      //     if(e.key == "Escape" || e.key == "Esc") {
-      //       clicked = false;
-      //       fPoint = {};
-      //     }
-      //   }
-      // };
-    </script>
-</div>
+function deleteLabel(id) {
+    fetch(`/remove/${id}`)
+        .then(response => {
+            if (response.ok) {
+                labels = labels.filter(label => label.id !== id.toString());
+                labels.forEach((label, index) => label.id = (index + 1).toString());
+                resizeCanvas();
+                updateLabelList();
+            } else {
+                console.error("Failed to delete label:", response.statusText);
+            }
+        })
+        .catch(error => console.error('Error deleting label:', error));
+}
+
+function updateLabelList() {
+    var labelList = document.getElementById("labelList");
+    labelList.innerHTML = "";
+    labels.forEach(function(label, index) {
+        var labelItem = document.createElement("div");
+        labelItem.innerHTML = `
+            <div class="input-group">
+                <span class="input-group-addon" id="id">${label.id}</span>
+                <input type="text" value="${label.name}" onchange="changeLabel(${index}, this.value)" class="form-control" style="background-color:#E5E7E9;"></input>
+                <span class="input-group-btn">
+                    <button class="btn btn-danger" onclick="deleteLabel('${label.id}')" type="button">-</button>
+                </span>
+            </div>
+        `;
+        labelList.appendChild(labelItem);
+    });
+}
+
+function changeLabel(index, newLabel) {
+    labels[index].name = newLabel;
+    fetch(`/label/${(index + 1)}?name=${newLabel}`)
+        .then(response => response.text())
+        .then(() => {
+            resizeCanvas();
+            updateLabelList();
+        })
+        .catch(error => console.error('Error changing label:', error));
+}
+
+image.src = "image/{{ image }}";
+
+function saveCSV() {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "ID,Name,xMin,xMax,yMin,yMax,Color\n";  // CSV headers
+    labels.forEach(label => {
+        let row = `${label.id},${label.name},${label.xMin},${label.xMax},${label.yMin},${label.yMax},${label.color}`;
+        csvContent += row + "\n";
+    });
+    
+    var encodedUri = encodeURI(csvContent);
+    var link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "labels.csv");
+    document.body.appendChild(link);  // Required for FF
+    link.click();
+    document.body.removeChild(link);
+}
+
+document.getElementById('saveCsvButton').addEventListener('click', function() {
+    fetch('/save')
+        .then(response => response.text())
+        .then(data => console.log(data))
+        .catch(error => console.error('Error saving CSV:', error));
+});
+
+
+</script>
+
 </body>
 </html>
