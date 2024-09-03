@@ -27,7 +27,7 @@ pip install Flask
 python app.py "D:\test"
 ```
 You don't need to specify a output file, it will check and create automatically on the loaded folder.
-```
+
 * open http://127.0.0.1:5000/tagger in your browser
 
 ## Output
