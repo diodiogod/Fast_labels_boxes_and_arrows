@@ -2,7 +2,7 @@
 
 ## Description
 Well, I could not find any annotators that would be simple to use and let me download the image with the bounding boxes AND labels. So I forked this project to improve it for my needs with the helps of ChatGPT. I'm not a coder.
-![action](./actionshot.png)
+![action](./actionshot.jpg)
 
 
 For windows, install Python, do the venv thing:
@@ -23,8 +23,9 @@ pip install Flask
 ## Getting started
 * cd into this directory after cloning the repo
 * start the app
+Example:
 ```
-python app.py "D:\test"
+python app.py "D:\YourFolderWithImages"
 ```
 You don't need to specify a output file, it will check and create automatically on the loaded folder.
 
@@ -32,16 +33,16 @@ You don't need to specify a output file, it will check and create automatically 
 
 ## Output
 * in keeping with simplicity, the output is to a csv file with the following fields
-    * *id* - id of the bounding box within the image
-    * *name* - name of the bounding box within the image
     * *image* - image the bounding box is associated with
+    * *id* - id of the bounding box within the image
+    * *name* - Label name of the bounding box
     * *xMin* - min x value of the bounding box
     * *xMax* - max x value of the bounding box
     * *yMin* - min y value of the bounding box
     * *yMax* - max y value of the bounding box
     * *Color* - hex clor value of the bounding box
 
-## What Is New To My Project:
+## What is new to my project:
 
 * Colors
 * Labels on top of each bounding box
