@@ -2,8 +2,7 @@ import sys
 from os import walk, path
 import csv
 import argparse
-
-from flask import Flask, redirect, url_for, request, render_template, send_file
+from flask import Flask, redirect, url_for, request, render_template, send_file, make_response
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -43,6 +42,23 @@ def save():
     update_csv()  # Save the current labels to the CSV file
     return "Annotations saved."
 
+@app.route("/download_csv")
+def download_csv():
+    """Generate a CSV file for the current image's annotations and serve it for download."""
+    image = app.config["FILES"][app.config["HEAD"]]
+    labels = app.config["LABELS"]
+    
+    # Generate CSV content
+    csv_content = "image,id,name,xMin,xMax,yMin,yMax,color\n"
+    for label in labels:
+        csv_content += f"{image},{label['id']},{label['name']},{label['xMin']},{label['xMax']},{label['yMin']},{label['yMax']},{label['color']}\n"
+    
+    # Create a response object to serve the CSV file
+    response = make_response(csv_content)
+    response.headers["Content-Disposition"] = f"attachment; filename={image}_annotations.csv"
+    response.headers["Content-Type"] = "text/csv"
+    return response
+
 @app.route("/bye")
 def bye():
     return send_file("taf.gif", mimetype='image/gif')
@@ -53,9 +69,24 @@ def add(id):
     xMax = request.args.get("xMax")
     yMin = request.args.get("yMin")
     yMax = request.args.get("yMax")
-    color = request.args.get("color")
-    name = request.args.get("name")
-    app.config["LABELS"].append({"id": id, "name": name, "xMin": xMin, "xMax": xMax, "yMin": yMin, "yMax": yMax, "color": color})
+    color = request.args.get("color", "#000000")  # Default to black if no color is provided
+    name = request.args.get("name", "Unnamed")    # Default to 'Unnamed' if no name is provided
+
+    if color is None or color == "":
+        color = "#000000"  # Default to black if color is missing
+
+    if name is None or name == "":
+        name = "Unnamed"  # Default to 'Unnamed' if name is missing
+
+    app.config["LABELS"].append({
+        "id": id,
+        "name": name,
+        "xMin": xMin,
+        "xMax": xMax,
+        "yMin": yMin,
+        "yMax": yMax,
+        "color": color
+    })
     return redirect(url_for('tagger'))
 
 @app.route('/remove/<id>')
@@ -72,8 +103,14 @@ def remove(id):
 @app.route('/label/<id>')
 def label(id):
     name = request.args.get("name")
-    app.config["LABELS"][int(id) - 1]["name"] = name
+    color = request.args.get("color")
+    print(f"Received name: {name}, color: {color}")  # Debugging
+    if color:
+        app.config["LABELS"][int(id) - 1]["color"] = color
+    if name:  # Update the name only if it is provided
+        app.config["LABELS"][int(id) - 1]["name"] = name
     return redirect(url_for('tagger'))
+
 
 @app.route('/image/<f>')
 def images(f):
@@ -97,6 +134,7 @@ def update_csv():
 
     # Add the current labels to the list
     for label in app.config["LABELS"]:
+        print(f"Saving label: {label}")  # Add this line for debugging
         rows.append({
             'image': image,
             'id': label['id'],

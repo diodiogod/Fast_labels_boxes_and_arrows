@@ -17,20 +17,28 @@
             z-index: 8000;
             margin-bottom: 0px;
         }
-        #content {
-            width: 75%;
-            height: calc(100% - 40px); /* Adjust to leave space for zoom controls */
-            float: right;
-            z-index: 8000;
-            margin-bottom: 0px;
-            overflow: hidden;
-        }
-        #canvas {
-            width: 100%;
-            height: 80%;
-            margin: 0;
-            padding: 0;
-        }
+		#content {
+			width: 75%;
+			height: 100%; /* Use the full height of the screen */
+			float: right;
+			z-index: 8000;
+			margin-bottom: 0px;
+			overflow: hidden;
+			display: flex;           /* Flexbox layout to make the canvas fill the container */
+			flex-direction: column;  /* Ensures children grow vertically */
+		}
+
+		#canvas {
+			flex-grow: 1;            /* Make canvas grow to fill available space */
+			width: 100%;             /* Ensure the canvas takes full width */
+			height: calc(100vh - 40px); /* Use calc() to ensure full height, adjusting for any fixed controls */
+			margin: 0;
+			padding: 0;
+			display: block;          /* Ensures the canvas behaves like a block element */
+			background-color: white; /* Optional: set a background to visually confirm canvas bounds */
+		}
+
+		
         #zoomControls {
             position: fixed;
             bottom: 0;
@@ -55,43 +63,116 @@
             z-index: 9000;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
+        /* Tab styling */
+        .nav-tabs {
+            margin-bottom: 10px;
+        }
+        .tab-content {
+            height: calc(100% - 40px); /* Adjust to leave space for the tabs */
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
 <nav id="sidebar">
-    <div class="panel panel-default" style="height: 100%;">
-        <div class="panel-heading">
-            <h3 class="panel-title">Labels</h3>
-        </div>
-        <script>
-            var label = function(id, name) {
-                fetch(`/label/${id}?name=${name}`)
-                    .then(response => response.text())
-                    .then(() => updateLabelList())
-                    .catch(error => console.error('Error updating label:', error));
-            };
-        </script>
-        <div class="panel-body">
-            <div class="list-group" id="labelList">
-              {% for label in labels %}
-                <div class="list-group-item">
-                    <div class="input-group">
-                        <span class="input-group-addon" id="id">{{ label.id }}</span>
-                        {% if label.name %}
-                            <input type="text" value="{{ label.name }}" onchange="label('{{ label.id }}', this.value)" class="form-control" style="background-color:#E5E7E9;"></input>
-                            <span class="input-group-btn">
-                                <button class="btn btn-danger" onclick="deleteLabel('{{ label.id }}')" type="button">-</button>
-                            </span>
-                        {% else %}
-                            <input id="{{ label.id }}" onkeydown="if (event.keyCode == 13) { label(this.id, this.value); }" type="text" class="form-control" placeholder="label name" autofocus></input>
-                        {% endif %}
+    <ul class="nav nav-tabs">
+        <li class="active"><a data-toggle="tab" href="#labelsTab">Labels</a></li>
+        <li><a data-toggle="tab" href="#predefinedLabelsTab">Predefined Labels</a></li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- Labels Tab -->
+        <div id="labelsTab" class="tab-pane fade in active">
+            <div class="panel panel-default" style="height: 100%;">
+                <div class="panel-heading">
+                    <h3 class="panel-title">Labels</h3>
+                </div>
+                <div class="panel-body" style="overflow-y: auto;">
+                    <div class="list-group" id="labelList">
+                        {% for label in labels %}
+                            <div class="list-group-item">
+                                <div class="input-group">
+                                    <span class="input-group-addon" id="id">{{ label.id }}</span>
+                                    {% if label.name %}
+                                        <input type="text" value="{{ label.name }}" onchange="label('{{ label.id }}', this.value)" class="form-control" style="background-color:#E5E7E9;"></input>
+                                        <span class="input-group-btn">
+                                            <input type="color" class="btn btn-default" value="{{ label.color }}" onchange="changeLabelColor('{{ label.id }}', this.value)" style="width: 34px; height: 34px; padding: 0; margin-right: 5px; margin-left: 5px;">
+                                            <button class="btn btn-danger" onclick="deleteLabel('{{ label.id }}')" type="button">-</button>
+                                        </span>
+                                    {% else %}
+                                        <input id="{{ label.id }}" onkeydown="if (event.keyCode == 13) { label(this.id, this.value); }" type="text" class="form-control" placeholder="label name" autofocus></input>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
                     </div>
                 </div>
-                {% endfor %}
             </div>
         </div>
+
+        <!-- Predefined Labels Tab -->
+		<div id="predefinedLabelsTab" class="tab-pane fade">
+			<div class="panel panel-default" style="height: 100%;">
+				<div class="panel-heading">
+					<h3 class="panel-title">Predefined Labels</h3>
+				</div>
+				<div class="panel-body" style="overflow-y: auto;">
+					<div id="predefinedLabelList" class="list-group">
+						<!-- Predefined labels will be listed here -->
+					</div>
+					
+					<!-- First: Label Font Size Input -->
+					<label for="labelFontSizeInput">Label Font Size (% of Image Width) and Offset:</label>
+
+					<!-- Label Font Size Slider and Input -->
+					<div class="input-group" style="margin-top: 10px;">
+						<span class="input-group-addon">Font Size (%):</span>
+						<input type="range" id="labelFontSizeSlider" class="form-control" value="4.5" min="1" max="10" step="0.1" style="width: calc(100% - 75px);">
+						<input type="number" id="labelFontSizeInput" class="form-control" value="4.5" min="1" max="100" step="0.1" style="width: 75px;">
+					</div>
+
+					<!-- Unified Label Offset Inputs with Font Selection Dropdown -->
+					<div class="input-group" style="margin-top: 10px;">
+						<span class="input-group-addon">Offset (X/Y):</span>
+						<input type="number" id="labelOffsetXInput" class="form-control" value="0" step="1" style="width: 60px;">
+						<input type="number" id="labelOffsetYInput" class="form-control" value="0" step="1" style="width: 60px;">
+
+						<!-- Font Dropdown (Placed in the same input group) -->
+						<span class="input-group-addon">Font:</span>
+						<select id="fontSelect" class="form-control" style="width: 100%;">
+							<option value="Arial">Arial</option>
+							<option value="Verdana">Verdana</option>
+							<option value="Courier New">Courier New</option>
+							<option value="Times New Roman">Times New Roman</option>
+							<option value="Georgia">Georgia</option>
+							<option value="Roboto">Roboto</option>                <!-- Modern and clean font -->
+							<option value="Open Sans">Open Sans</option>          <!-- Popular web font -->
+							<option value="Lato">Lato</option>                    <!-- Clean and minimal font -->
+							<option value="Consolas">Consolas</option>            <!-- Commonly used in code editors -->
+							<option value="Monaco">Monaco</option>                <!-- Another coding font, often used on macOS -->
+							<option value="Lucida Console">Lucida Console</option> <!-- Another monospaced font -->
+							<option value="Source Code Pro">Source Code Pro</option> <!-- Google’s font for code -->
+							<option value="Fira Code">Fira Code</option>          <!-- A font designed for coding -->
+							<option value="PT Mono">PT Mono</option>              <!-- Simple, clear monospaced font -->
+							<option value="Inconsolata">Inconsolata</option>      <!-- Another great option for code -->
+							<option value="Raleway">Raleway</option>              <!-- Modern and elegant font -->
+							<option value="Ubuntu">Ubuntu</option>                <!-- Popular in Linux environments -->
+						</select>
+					</div>
+
+					<!-- Second: Add New Label Button -->
+					<button id="addPredefinedLabel" class="btn btn-success" style="width: 100%; margin-top: 10px;">Add New Label</button>
+
+					<!-- Third: Reset to Default Button -->
+					<button id="resetToDefaultPredefinedLabels" class="btn btn-warning" style="width: 100%; margin-top: 10px;">Reset to Default</button>
+					
+				</div>
+			</div>
+		</div>
+
     </div>
 </nav>
+
 <div id="content" class="container">
 
     <div style="overflow: hidden">
@@ -103,7 +184,6 @@
     <button id="resetButton" class="btn btn-primary">Reset to 100%</button>
     <span id="currentScale">100%</span>
     <button id="downloadButton" class="btn btn-success" style="margin-left: 10px;">Download Image</button>
-    <button id="toggleZoomButton" class="btn btn-info" style="margin-left: 10px;">Toggle Zoom Point</button>
 	<button id="saveCsvButton" class="btn btn-warning" style="margin-left: 10px;">Save CSV</button>
 </div>
 <div style="position: fixed; bottom: 10px; left: 10px;">
@@ -138,16 +218,82 @@ var image = new Image();
 var originalWidth, originalHeight;
 var scale = 1;
 var zoomMode = 'top-left'; // Default zoom mode
+var labelFontSizePercentage = 4.5; // Default value as 4.5%
+var labelOffsetX = 0; // Default horizontal offset (in pixels)
+var labelOffsetY = 0; // Default vertical offset (in pixels)
 
 var offsetX = 0, offsetY = 0;  // Track offsets for dragging
 
 var predefinedLabels = [
-    { name: "Apple", color: "cyan" },
-    { name: "Banana", color: "magenta" },
-    { name: "Peach", color: "green" },
-    { name: "Grapes", color: "yellow" },
-    { name: "Lemon", color: "red" }
-];
+    { name: "Apple", color: "#00FFFF" },
+    { name: "Banana", color: "#FF00FF" },
+    { name: "Peach", color: "#008000" },
+    { name: "Grapes", color: "#FFFF00" },
+    { name: "Lemon", color: "#FF0000" }
+];  // Add default predefined labels or load them from localStorage
+
+var labelFont = "Verdana"; // Default font
+
+// Load the font selection from localStorage
+function loadFontSelection() {
+    const savedFont = localStorage.getItem('labelFont');
+    if (savedFont) {
+        labelFont = savedFont;
+        document.getElementById("fontSelect").value = labelFont;
+    } else {
+        labelFont = "Verdana"; // Default font
+    }
+}
+
+// Save the font selection to localStorage
+function saveFontSelection() {
+    localStorage.setItem('labelFont', labelFont);
+}
+
+// Apply the selected font to the labels
+function applyFontSelection() {
+    // This function will be called whenever the font is changed to redraw the canvas
+    resizeCanvas();
+}
+
+// Load the font selection when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadFontSelection();
+    applyFontSelection();
+});
+
+// Update the font selection when the dropdown value changes
+document.getElementById("fontSelect").addEventListener("change", function() {
+    labelFont = this.value;
+    saveFontSelection();
+    applyFontSelection();
+});
+
+
+// Function to load predefined labels from localStorage or use defaults
+function loadPredefinedLabels() {
+    const savedPredefinedLabels = localStorage.getItem('predefinedLabels');
+    if (savedPredefinedLabels) {
+        predefinedLabels = JSON.parse(savedPredefinedLabels);
+    } else {
+        predefinedLabels = [
+            { name: "Apple", color: "#00FF00" },
+			{ name: "Apple", color: "#00FFFF" },
+			{ name: "Banana", color: "#FF00FF" },
+			{ name: "Peach", color: "#008000" },
+			{ name: "Grapes", color: "#FFFF00" },
+			{ name: "Lemon", color: "#FF0000" }
+        ];  // Provide default labels if none are saved
+    }
+}
+
+// Function to save predefined labels to localStorage
+function savePredefinedLabels() {
+    localStorage.setItem('predefinedLabels', JSON.stringify(predefinedLabels));
+}
+
+// Initialize predefined labels with values from localStorage if available
+loadPredefinedLabels();
 
 function drawLabels(name, xMin, xMax, yMin, yMax, color) {
     ctx.strokeStyle = color;
@@ -162,11 +308,61 @@ function drawLabels(name, xMin, xMax, yMin, yMax, color) {
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // Set font size proportional to the image width
-    var fontSize = 0.045 * originalWidth; // 4.5% of the image's width
-    ctx.font = `${fontSize * scale}px Arial`;
-    ctx.fillText(name, xMin * scale + offsetX, yMin * scale + offsetY);  // Apply offsets
+    // Set font size proportional to the image width based on user-defined percentage
+    var fontSize = (labelFontSizePercentage / 100) * originalWidth;
+    ctx.font = `${fontSize * scale}px ${labelFont}`;
+
+    // Apply offsets to the label position
+    ctx.fillText(
+        name,
+        xMin * scale + offsetX + labelOffsetX,  // Apply horizontal offset
+        yMin * scale + offsetY + labelOffsetY   // Apply vertical offset
+    );
 }
+
+
+
+
+// Function to initialize the predefined labels panel
+function initPredefinedLabels() {
+    var predefinedLabelList = document.getElementById("predefinedLabelList");
+    predefinedLabelList.innerHTML = "";  // Clear existing list
+
+    predefinedLabels.forEach(function(label, index) {
+        var labelItem = document.createElement("div");
+        labelItem.className = "list-group-item";
+        labelItem.innerHTML = `
+            <div class="input-group">
+                <span class="input-group-addon">Label ${index + 1}</span>
+                <input type="text" value="${label.name}" class="form-control" onchange="updatePredefinedLabelName(${index}, this.value)">
+                <span class="input-group-btn">
+                    <input type="color" class="btn btn-default" value="${label.color}" onchange="updatePredefinedLabelColor(${index}, this.value)">
+                    <button class="btn btn-danger" onclick="removePredefinedLabel(${index})" type="button">Remove</button>
+                </span>
+            </div>
+        `;
+        predefinedLabelList.appendChild(labelItem);
+    });
+}
+
+
+// Update the name of a predefined label
+function updatePredefinedLabelName(index, newName) {
+    predefinedLabels[index].name = newName;
+    savePredefinedLabels();  // Save updated labels to localStorage
+}
+
+function updatePredefinedLabelColor(index, newColor) {
+    predefinedLabels[index].color = newColor;
+    savePredefinedLabels();  // Save updated labels to localStorage
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadLabelFontSizePercentage();  // Load the font size percentage
+    loadLabelOffsets();  // Load the label offsets
+    initPredefinedLabels();  // Initialize the predefined labels
+});
+
 
 function setInitialZoom() {
     var cWidth = c.clientWidth;
@@ -189,21 +385,21 @@ function setInitialZoom() {
 }
 
 function resizeCanvas() {
-    var newWidth = originalWidth * scale;
-    var newHeight = originalHeight * scale;
+    // Keep the canvas dimensions fixed
+    c.width = c.clientWidth;
+    c.height = c.clientHeight;
 
-    c.style.width = newWidth + 'px';
-    c.style.height = newHeight + 'px';
-    c.width = newWidth;
-    c.height = newHeight;
-
-    // Clear the canvas and redraw the image and labels
+    // Clear the canvas before redrawing
     ctx.clearRect(0, 0, c.width, c.height);
 
-    // Apply the updated offsets
+    // Calculate the new dimensions of the image based on the scale
+    const newWidth = originalWidth * scale;
+    const newHeight = originalHeight * scale;
+
+    // Draw the scaled image on the canvas starting from the top-left corner
     ctx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
 
-    // Redraw all labels with the new scale and offsets
+    // Redraw all labels with the new scale and offsets, using the top-left as the reference
     labels.forEach(function(label) {
         drawLabels(label.name, label.xMin, label.xMax, label.yMin, label.yMax, label.color);
     });
@@ -222,16 +418,25 @@ c.addEventListener('mousedown', function(e) {
     }
 });
 
+c.addEventListener('mousedown', function(e) {
+    if (e.button === 1) { // 1 is the middle mouse button
+        isDragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        e.preventDefault();
+    }
+});
+
 c.addEventListener('mousemove', function(e) {
     if (isDragging) {
         var dx = e.clientX - lastX;
         var dy = e.clientY - lastY;
 
-        // Update offsets
+        // Update offsets for dragging, using top-left as the origin
         offsetX += dx;
         offsetY += dy;
 
-        // Redraw canvas with updated offsets
+        // Redraw the image and labels with the updated offsets
         resizeCanvas();
 
         lastX = e.clientX;
@@ -258,6 +463,7 @@ function updateDebugInfo() {
 image.onload = function(e) {
     originalWidth = image.width;
     originalHeight = image.height;
+    loadPredefinedLabels();  // Ensure predefined labels are loaded for every image
     setInitialZoom(); // Adjust initial zoom
     window.addEventListener('resize', resizeCanvas);
 };
@@ -279,23 +485,45 @@ document.getElementById('resetButton').addEventListener('click', function() {
 
 
 document.getElementById('downloadButton').addEventListener('click', function() {
-    fetch('/save')
-        .then(response => response.text())
-        .then(data => {
-            console.log(data);
-            var link = document.createElement('a');
-            link.download = 'image_with_labels.png';
-            link.href = c.toDataURL('image/png');
-            link.click();
-        })
-        .catch(error => console.error('Error saving CSV:', error));
+    // Create a new canvas with the same dimensions as the original image
+    var downloadCanvas = document.createElement('canvas');
+    downloadCanvas.width = originalWidth;
+    downloadCanvas.height = originalHeight;
+    var downloadCtx = downloadCanvas.getContext('2d');
+
+    // Draw the image on the new canvas
+    downloadCtx.drawImage(image, 0, 0, originalWidth, originalHeight);
+
+    // Draw the labels on the new canvas
+    labels.forEach(function(label) {
+        drawLabelsOnCanvas(downloadCtx, label.name, label.xMin, label.xMax, label.yMin, label.yMax, label.color);
+    });
+
+    // Convert the canvas to an image and trigger download
+    var link = document.createElement('a');
+    link.download = 'image_with_labels.png';
+    link.href = downloadCanvas.toDataURL('image/png');
+    link.click();
 });
 
-document.getElementById('toggleZoomButton').addEventListener('click', function() {
-    zoomMode = (zoomMode === 'top-left') ? 'bottom-left' : 'top-left';
-    this.innerText = zoomMode === 'top-left' ? 'Switch to Bottom-Left Zoom' : 'Switch to Top-Left Zoom';
-    resizeCanvas();
-});
+// Helper function to draw labels on a specific canvas context
+function drawLabelsOnCanvas(ctx, name, xMin, xMax, yMin, yMax, color) {
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.rect(xMin, yMin, xMax - xMin, yMax - yMin);
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Set font size proportional to the image width
+    var fontSize = (labelFontSizePercentage / 100) * originalWidth;
+    ctx.font = `${fontSize}px Verdana`;
+
+    // Apply label offsets
+    ctx.fillText(name, xMin + labelOffsetX, yMin + labelOffsetY);
+}
+
+
 
 function addWheelEventListener(element) {
     element.addEventListener('wheel', function(event) {
@@ -327,10 +555,17 @@ addWheelEventListener(document.getElementById('sidebar'));
 
 var clicked = false;
 var fPoint = {};
+
 c.onclick = function(e) {
     var rect = c.getBoundingClientRect();
     var x = (e.clientX - rect.left - offsetX) / scale;  // Adjust for offsetX
     var y = (e.clientY - rect.top - offsetY) / scale;   // Adjust for offsetY
+
+    // Check if the click is inside the image boundaries
+    if (x < 0 || y < 0 || x > originalWidth || y > originalHeight) {
+        return; // Ignore clicks outside the image
+    }
+
     if (!clicked) {
         ctx.strokeStyle = "pink";
         ctx.fillStyle = "pink";
@@ -343,10 +578,17 @@ c.onclick = function(e) {
         var xMax = Math.max(fPoint.x, x);
         var yMin = Math.min(fPoint.y, y);
         var yMax = Math.max(fPoint.y, y);
+
+        // Ensure the bounding box stays within the image boundaries
+        xMin = Math.max(xMin, 0);
+        yMin = Math.max(yMin, 0);
+        xMax = Math.min(xMax, originalWidth);
+        yMax = Math.min(yMax, originalHeight);
+
         fPoint = {};
         var predefinedLabel = predefinedLabels[labels.length % predefinedLabels.length];
         labels.push({
-            id: (labels.length + 1).toString(), // Ensure label IDs are updated correctly
+            id: (labels.length + 1).toString(),
             name: predefinedLabel.name,
             xMin: xMin,
             xMax: xMax,
@@ -354,7 +596,7 @@ c.onclick = function(e) {
             yMax: yMax,
             color: predefinedLabel.color
         });
-        fetch(`/add/${labels.length}?xMin=${xMin}&xMax=${xMax}&yMin=${yMin}&yMax=${yMax}&color=${predefinedLabel.color}&name=${predefinedLabel.name}`)
+        fetch(`/add/${labels.length}?xMin=${xMin}&xMax=${xMax}&yMin=${yMin}&yMax=${yMax}&color=${encodeURIComponent(predefinedLabel.color)}&name=${encodeURIComponent(predefinedLabel.name)}`)
             .then(response => response.text())
             .then(() => {
                 resizeCanvas();
@@ -364,6 +606,8 @@ c.onclick = function(e) {
     }
     clicked = !clicked;
 };
+
+
 
 
 function deleteLabel(id) {
@@ -381,16 +625,31 @@ function deleteLabel(id) {
         .catch(error => console.error('Error deleting label:', error));
 }
 
+function changeLabelColor(id, newColor) {
+    const label = labels.find(label => label.id === id);
+    if (label) {
+        label.color = newColor;
+        fetch(`/label/${id}?color=${encodeURIComponent(newColor)}`)
+            .then(response => response.text())
+            .then(() => resizeCanvas())
+            .catch(error => console.error('Error updating label color:', error));
+    }
+}
+
 function updateLabelList() {
     var labelList = document.getElementById("labelList");
     labelList.innerHTML = "";
     labels.forEach(function(label, index) {
         var labelItem = document.createElement("div");
+        labelItem.className = "list-group-item";  // This class is used initially
+
+        // Creating the exact structure as the initial design
         labelItem.innerHTML = `
             <div class="input-group">
                 <span class="input-group-addon" id="id">${label.id}</span>
                 <input type="text" value="${label.name}" onchange="changeLabel(${index}, this.value)" class="form-control" style="background-color:#E5E7E9;"></input>
                 <span class="input-group-btn">
+                    <input type="color" class="btn btn-default" value="${label.color}" onchange="changeLabelColor('${label.id}', this.value)" style="width: 34px; height: 34px; padding: 0; margin: 0 5px;">
                     <button class="btn btn-danger" onclick="deleteLabel('${label.id}')" type="button">-</button>
                 </span>
             </div>
@@ -399,9 +658,10 @@ function updateLabelList() {
     });
 }
 
+
 function changeLabel(index, newLabel) {
     labels[index].name = newLabel;
-    fetch(`/label/${(index + 1)}?name=${newLabel}`)
+    fetch(`/label/${(index + 1)}?name=${encodeURIComponent(newLabel)}`)
         .then(response => response.text())
         .then(() => {
             resizeCanvas();
@@ -430,14 +690,160 @@ function saveCSV() {
 }
 
 document.getElementById('saveCsvButton').addEventListener('click', function() {
+    // First, save the current annotations to the annotations.csv file on the server
     fetch('/save')
         .then(response => response.text())
-        .then(data => console.log(data))
+        .then(data => {
+            console.log(data);
+            // Then, download the current image's annotations as a separate CSV file
+            window.location.href = '/download_csv';
+        })
         .catch(error => console.error('Error saving CSV:', error));
 });
 
+document.getElementById("labelFontSizeInput").addEventListener("input", function() {
+    labelFontSizePercentage = parseFloat(this.value); // Update the font size percentage
+    localStorage.setItem('labelFontSizePercentage', labelFontSizePercentage); // Save to localStorage
+    resizeCanvas();  // Redraw the canvas with the new font size
+});
 
+function loadLabelFontSizePercentage() {
+    const savedFontSizePercentage = localStorage.getItem('labelFontSizePercentage');
+    if (savedFontSizePercentage) {
+        labelFontSizePercentage = parseFloat(savedFontSizePercentage);
+        document.getElementById("labelFontSizeInput").value = labelFontSizePercentage; // Update the input field
+    } else {
+        labelFontSizePercentage = 4.5; // Default value
+    }
+}
+
+function resetPredefinedLabelsToDefault() {
+    // Reset predefined labels to default
+    predefinedLabels = [
+        { name: "Apple", color: "#00FFFF" },
+        { name: "Banana", color: "#FF00FF" },
+        { name: "Peach", color: "#008000" },
+        { name: "Grapes", color: "#FFFF00" },
+        { name: "Lemon", color: "#FF0000" }
+    ];
+
+    // Reset label font size to default
+    labelFontSizePercentage = 4.5;
+    document.getElementById("labelFontSizeInput").value = labelFontSizePercentage;
+
+    // Reset label offsets to default
+    labelOffsetX = 0;
+    labelOffsetY = -3;
+    document.getElementById("labelOffsetXInput").value = labelOffsetX;
+    document.getElementById("labelOffsetYInput").value = labelOffsetY;
+
+    // Reset font to default
+    labelFont = "Verdana";
+    document.getElementById("fontSelect").value = labelFont;
+
+    // Save the updated defaults to localStorage
+    savePredefinedLabels();
+    localStorage.setItem('labelFontSizePercentage', labelFontSizePercentage);
+    localStorage.setItem('labelOffsetX', labelOffsetX);
+    localStorage.setItem('labelOffsetY', labelOffsetY);
+    localStorage.setItem('labelFont', labelFont);
+
+    // Re-initialize the predefined labels panel to reflect the default values
+    initPredefinedLabels();
+
+    // Redraw the canvas with the default font size and font
+    resizeCanvas();
+}
+
+
+// Add event listener to the "Reset to Default" button
+document.getElementById("resetToDefaultPredefinedLabels").addEventListener("click", function() {
+    if (confirm("Are you sure you want to reset the predefined labels to their default values?")) {
+        resetPredefinedLabelsToDefault();
+    }
+});
+function addPredefinedLabel() {
+    predefinedLabels.push({ name: "New Label", color: "#000000" });  // Add a new label with default values
+    savePredefinedLabels();  // Save the updated labels to localStorage
+    initPredefinedLabels();  // Refresh the predefined labels panel
+}
+
+function removePredefinedLabel(index) {
+    predefinedLabels.splice(index, 1);  // Remove the label at the specified index
+    savePredefinedLabels();  // Save the updated labels to localStorage
+    initPredefinedLabels();  // Refresh the predefined labels panel
+}
+
+function loadLabelOffsets() {
+    const savedOffsetX = localStorage.getItem('labelOffsetX');
+    const savedOffsetY = localStorage.getItem('labelOffsetY');
+
+    if (savedOffsetX !== null) {
+        labelOffsetX = parseInt(savedOffsetX, 10);
+        document.getElementById("labelOffsetXInput").value = labelOffsetX;
+    } else {
+        labelOffsetX = 0;
+    }
+
+    if (savedOffsetY !== null) {
+        labelOffsetY = parseInt(savedOffsetY, 10);
+        document.getElementById("labelOffsetYInput").value = labelOffsetY;
+    } else {
+        labelOffsetY = 0;
+    }
+}
+
+document.getElementById("labelOffsetXInput").addEventListener("input", function() {
+    labelOffsetX = parseInt(this.value, 10); // Update horizontal offset
+    localStorage.setItem('labelOffsetX', labelOffsetX); // Save to localStorage
+    resizeCanvas();  // Redraw the canvas with the new offset
+});
+
+document.getElementById("labelOffsetYInput").addEventListener("input", function() {
+    labelOffsetY = parseInt(this.value, 10); // Update vertical offset
+    localStorage.setItem('labelOffsetY', labelOffsetY); // Save to localStorage
+    resizeCanvas();  // Redraw the canvas with the new offset
+});
+document.getElementById("labelOffsetXInput").addEventListener("input", function() {
+    labelOffsetX = parseInt(this.value, 10); // Update horizontal offset
+    localStorage.setItem('labelOffsetX', labelOffsetX); // Save to localStorage
+    resizeCanvas();  // Redraw the canvas with the new offset
+});
+
+document.getElementById("labelOffsetYInput").addEventListener("input", function() {
+    labelOffsetY = parseInt(this.value, 10); // Update vertical offset
+    localStorage.setItem('labelOffsetY', labelOffsetY); // Save to localStorage
+    resizeCanvas();  // Redraw the canvas with the new offset
+});
+
+
+// Add event listener to the "Add New Label" button
+document.getElementById("addPredefinedLabel").addEventListener("click", function() {
+    addPredefinedLabel();
+});
+
+// Sync the slider with the input field
+document.getElementById("labelFontSizeSlider").addEventListener("input", function() {
+    labelFontSizePercentage = parseFloat(this.value);
+    document.getElementById("labelFontSizeInput").value = labelFontSizePercentage;
+    localStorage.setItem('labelFontSizePercentage', labelFontSizePercentage);
+    resizeCanvas();  // Redraw the canvas with the new font size
+});
+
+// Sync the input field with the slider
+document.getElementById("labelFontSizeInput").addEventListener("input", function() {
+    labelFontSizePercentage = parseFloat(this.value);
+    document.getElementById("labelFontSizeSlider").value = labelFontSizePercentage;
+    localStorage.setItem('labelFontSizePercentage', labelFontSizePercentage);
+    resizeCanvas();  // Redraw the canvas with the new font size
+});
 </script>
+
+<!-- Include jQuery -->
+<script src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+
+<!-- Include Bootstrap's JavaScript -->
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
 
 </body>
 </html>
