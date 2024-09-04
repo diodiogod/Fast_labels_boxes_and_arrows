@@ -342,11 +342,12 @@ document.getElementById("arrowHeadTypeSelect").addEventListener("change", functi
 });
 
 // Function to draw labels (both boxes and arrows)
-function drawLabels(label) {
+function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
     const { name, xMin, xMax, yMin, yMax, color, type } = label;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 * scale;
+
 
     if (type === 'box') {
         // Draw a rectangle (bounding box)
@@ -367,25 +368,21 @@ function drawLabels(label) {
         if (arrowHeadType === 'standard') {
             // Standard arrowhead
             ctx.beginPath();
-            ctx.moveTo(xMin * scale + offsetX, yMin * scale + offsetY);
-			ctx.lineTo(xMax * scale + offsetX, yMax * scale + offsetY);
-			ctx.stroke();			
-
-			ctx.lineTo(
-				xMax * scale + offsetX - headlen * Math.cos(angle - Math.PI / 6),
-				yMax * scale + offsetY - headlen * Math.sin(angle - Math.PI / 6)
-			);
-			ctx.moveTo(xMax * scale + offsetX, yMax * scale + offsetY);
-			ctx.lineTo(
-				xMax * scale + offsetX - headlen * Math.cos(angle + Math.PI / 6),
-				yMax * scale + offsetY - headlen * Math.sin(angle + Math.PI / 6)
-			);
-			ctx.stroke();
-		
+            ctx.moveTo(xMax * scale + offsetX, yMax * scale + offsetY);
+            ctx.lineTo(
+                xMax * scale + offsetX - headlen * Math.cos(angle - Math.PI / 6),
+                yMax * scale + offsetY - headlen * Math.sin(angle - Math.PI / 6)
+            );
+            ctx.lineTo(xMax * scale + offsetX, yMax * scale + offsetY);
+            ctx.lineTo(
+                xMax * scale + offsetX - headlen * Math.cos(angle + Math.PI / 6),
+                yMax * scale + offsetY - headlen * Math.sin(angle + Math.PI / 6)
+            );
+            ctx.stroke();
         } else if (arrowHeadType === 'triangle') {
-            // Triangle arrowhead
             ctx.beginPath();
-            ctx.moveTo(
+            ctx.moveTo(xMax * scale + offsetX, yMax * scale + offsetY);
+            ctx.lineTo(
                 xMax * scale + offsetX - headlen * Math.cos(angle - Math.PI / 6),
                 yMax * scale + offsetY - headlen * Math.sin(angle - Math.PI / 6)
             );
@@ -395,6 +392,7 @@ function drawLabels(label) {
             );
             ctx.lineTo(xMax * scale + offsetX, yMax * scale + offsetY);
             ctx.closePath();
+            ctx.stroke();
             ctx.fill();
         }
     }
@@ -472,10 +470,14 @@ function setInitialZoom() {
     resizeCanvas();
 }
 
-function resizeCanvas() {
-    // Keep the canvas dimensions fixed
+function setCanvasDimensions() {
     c.width = c.clientWidth;
     c.height = c.clientHeight;
+}
+
+function resizeCanvas() {
+    // Keep the canvas dimensions fixed
+    setCanvasDimensions();
 
     // Clear the canvas before redrawing
     ctx.clearRect(0, 0, c.width, c.height);
@@ -486,24 +488,16 @@ function resizeCanvas() {
 
     // Draw the scaled image on the canvas starting from the top-left corner
     ctx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
-	
-    // Redraw all labels with the new scale and offsets
-    labels.forEach(drawLabels);
 
+    // Update to pass ctx, scale, offsetX, offsetY
+    labels.forEach(function(label) {
+        drawLabels(ctx, label, scale, offsetX, offsetY);
+    });
 }
 
 // Dragging logic
 var isDragging = false;
 var lastX, lastY;
-
-c.addEventListener('mousedown', function(e) {
-    if (e.button === 1) { // 1 is the middle mouse button
-        isDragging = true;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        e.preventDefault();
-    }
-});
 
 c.addEventListener('mousedown', function(e) {
     if (e.button === 1) { // 1 is the middle mouse button
@@ -547,12 +541,16 @@ function updateDebugInfo() {
     // Update debug info here if needed
 }
 
-image.onload = function(e) {
+function initializeCanvasWithImage(image) {
     originalWidth = image.width;
     originalHeight = image.height;
     loadPredefinedLabels();  // Ensure predefined labels are loaded for every image
     setInitialZoom(); // Adjust initial zoom
     window.addEventListener('resize', resizeCanvas);
+}
+
+image.onload = function() {
+    initializeCanvasWithImage(image);
 };
 
 document.getElementById('resizeSlider').addEventListener('input', function() {
@@ -581,9 +579,8 @@ document.getElementById('downloadButton').addEventListener('click', function() {
     // Draw the image on the new canvas without applying offsets
     downloadCtx.drawImage(image, 0, 0, originalWidth, originalHeight);
 
-    // Draw the labels on the new canvas, ensuring no offsets and scale = 1
-    labels.forEach(function(label) {
-        drawLabelsOnCanvas(downloadCtx, label, true); // Pass true for download mode
+    labels.forEach(function (label) {
+        drawLabels(downloadCtx, label, 1, 0, 0); // No scale or offset for download
     });
 
     // Convert the canvas to an image and trigger download
@@ -592,85 +589,6 @@ document.getElementById('downloadButton').addEventListener('click', function() {
     link.href = downloadCanvas.toDataURL('image/png');
     link.click();
 });
-
-// Helper function to draw labels and arrows on a specific canvas context
-function drawLabelsOnCanvas(ctx, label, download = false) {
-    const { name, xMin, xMax, yMin, yMax, color, type } = label;
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.lineWidth = 3;
-
-    // Use 1 (100%) scale for downloading, otherwise use the current scale
-    const effectiveScale = download ? 1 : scale;
-    const effectiveOffsetX = download ? 0 : offsetX;
-    const effectiveOffsetY = download ? 0 : offsetY;
-
-    if (type === 'box') {
-        // Draw a rectangle (bounding box)
-        ctx.beginPath();
-        ctx.rect(
-            xMin * effectiveScale + effectiveOffsetX,
-            yMin * effectiveScale + effectiveOffsetY,
-            (xMax - xMin) * effectiveScale,
-            (yMax - yMin) * effectiveScale
-        );
-        ctx.stroke();
-    } else if (type === 'arrow') {
-        // Draw the line of the arrow
-        ctx.beginPath();
-        ctx.moveTo(
-            xMin * effectiveScale + effectiveOffsetX,
-            yMin * effectiveScale + effectiveOffsetY
-        );
-        ctx.lineTo(
-            xMax * effectiveScale + effectiveOffsetX,
-            yMax * effectiveScale + effectiveOffsetY
-        );
-        ctx.stroke();
-
-        // Calculate the arrowhead
-        const headlen = arrowHeadSize * effectiveScale;
-        const angle = Math.atan2(yMax - yMin, xMax - xMin);
-
-        if (arrowHeadType === 'standard') {
-            ctx.lineTo(
-                xMax * effectiveScale + effectiveOffsetX - headlen * Math.cos(angle - Math.PI / 6),
-                yMax * effectiveScale + effectiveOffsetY - headlen * Math.sin(angle - Math.PI / 6)
-            );
-            ctx.moveTo(xMax * effectiveScale + effectiveOffsetX, yMax * effectiveScale + effectiveOffsetY);
-            ctx.lineTo(
-                xMax * effectiveScale + effectiveOffsetX - headlen * Math.cos(angle + Math.PI / 6),
-                yMax * effectiveScale + effectiveOffsetY - headlen * Math.sin(angle + Math.PI / 6)
-            );
-            ctx.stroke();
-        } else if (arrowHeadType === 'triangle') {
-            ctx.beginPath();
-            ctx.moveTo(
-                xMax * effectiveScale + effectiveOffsetX - headlen * Math.cos(angle - Math.PI / 6),
-                yMax * effectiveScale + effectiveOffsetY - headlen * Math.sin(angle - Math.PI / 6)
-            );
-            ctx.lineTo(
-                xMax * effectiveScale + effectiveOffsetX - headlen * Math.cos(angle + Math.PI / 6),
-                yMax * effectiveScale + effectiveOffsetY - headlen * Math.sin(angle + Math.PI / 6)
-            );
-            ctx.lineTo(xMax * effectiveScale + effectiveOffsetX, yMax * effectiveScale + effectiveOffsetY);
-            ctx.closePath();
-            ctx.fill();
-        }
-    }
-
-    // Set font size proportional to the image width
-    const fontSize = (labelFontSizePercentage / 100) * originalWidth;
-    ctx.font = `${fontSize * effectiveScale}px ${labelFont}`;
-
-    // Draw label text
-    ctx.fillText(
-        name,
-        xMin * effectiveScale + effectiveOffsetX + labelOffsetX,
-        yMin * effectiveScale + effectiveOffsetY + labelOffsetY
-    );
-}
-
 
 function addWheelEventListener(element) {
     element.addEventListener('wheel', function(event) {
@@ -715,10 +633,16 @@ document.getElementById('toggleLabelMode').addEventListener('click', function() 
     localStorage.setItem('labelMode', labelMode); // Save labelMode to local storage
 });
 
-c.onclick = function(e) {
+function getAdjustedCoordinates(e) {
     var rect = c.getBoundingClientRect();
     var x = (e.clientX - rect.left - offsetX) / scale;  // Adjust for offsetX
     var y = (e.clientY - rect.top - offsetY) / scale;   // Adjust for offsetY
+
+    return { x, y };
+}
+
+c.onclick = function(e) {
+    const { x, y } = getAdjustedCoordinates(e);
 
     // Check if the click is inside the image boundaries
     if (x < 0 || y < 0 || x > originalWidth || y > originalHeight) {
@@ -760,7 +684,6 @@ c.onclick = function(e) {
                 color: predefinedLabel.color,
                 type: labelType
             };
-            labels.push(labelData);
         } else if (labelMode === 'arrow') {
             labelData = {
                 id: (labels.length + 1).toString(),
@@ -772,11 +695,15 @@ c.onclick = function(e) {
                 color: predefinedLabel.color,
                 type: labelType
             };
-            labels.push(labelData);
         }
+
+        labels.push(labelData);
 
         // Log the label data before sending
         console.log("Sending label data to server: ", labelData);
+
+        // Draw the label immediately using the updated drawLabels function
+        drawLabels(ctx, labelData, scale, offsetX, offsetY);
 
         // Send the label data to the server
         fetch(`/add/${labelData.id}?xMin=${labelData.xMin}&xMax=${labelData.xMax}&yMin=${labelData.yMin}&yMax=${labelData.yMax}&color=${encodeURIComponent(labelData.color)}&name=${encodeURIComponent(labelData.name)}&type=${labelData.type}`)
@@ -795,7 +722,6 @@ c.onclick = function(e) {
     }
     clicked = !clicked;
 };
-
 
 function deleteLabel(id) {
     fetch(`/remove/${id}`)
@@ -1003,28 +929,22 @@ function loadLabelOffsets() {
     }
 }
 
-document.getElementById("labelOffsetXInput").addEventListener("input", function() {
-    labelOffsetX = parseInt(this.value, 10); // Update horizontal offset
-    localStorage.setItem('labelOffsetX', labelOffsetX); // Save to localStorage
-    resizeCanvas();  // Redraw the canvas with the new offset
-});
+function handleOffsetInput(axis) {
+    return function() {
+        const value = parseInt(this.value, 10);
+        if (axis === 'X') {
+            labelOffsetX = value;
+            localStorage.setItem('labelOffsetX', labelOffsetX);
+        } else if (axis === 'Y') {
+            labelOffsetY = value;
+            localStorage.setItem('labelOffsetY', labelOffsetY);
+        }
+        resizeCanvas();  // Redraw the canvas with the new offset
+    };
+}
 
-document.getElementById("labelOffsetYInput").addEventListener("input", function() {
-    labelOffsetY = parseInt(this.value, 10); // Update vertical offset
-    localStorage.setItem('labelOffsetY', labelOffsetY); // Save to localStorage
-    resizeCanvas();  // Redraw the canvas with the new offset
-});
-document.getElementById("labelOffsetXInput").addEventListener("input", function() {
-    labelOffsetX = parseInt(this.value, 10); // Update horizontal offset
-    localStorage.setItem('labelOffsetX', labelOffsetX); // Save to localStorage
-    resizeCanvas();  // Redraw the canvas with the new offset
-});
-
-document.getElementById("labelOffsetYInput").addEventListener("input", function() {
-    labelOffsetY = parseInt(this.value, 10); // Update vertical offset
-    localStorage.setItem('labelOffsetY', labelOffsetY); // Save to localStorage
-    resizeCanvas();  // Redraw the canvas with the new offset
-});
+document.getElementById("labelOffsetXInput").addEventListener("input", handleOffsetInput('X'));
+document.getElementById("labelOffsetYInput").addEventListener("input", handleOffsetInput('Y'));
 
 
 // Add event listener to the "Add New Label" button

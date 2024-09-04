@@ -1,4 +1,4 @@
-# Simple? Label Bounding Box
+# Fast Labels: Boxes & Arrows
 
 ## Description
 Well, I could not find any annotators that would be fast to use and let me download the image with the bounding boxes AND labels. So I forked this project to improve it for my needs with the helps of ChatGPT. I'm not a coder.
