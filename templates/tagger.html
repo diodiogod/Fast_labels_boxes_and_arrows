@@ -87,6 +87,9 @@
             <div class="panel panel-default" style="height: 100%;">
                 <div class="panel-heading">
                     <h3 class="panel-title">Labels</h3>
+					<!-- Add this inside the Predefined Labels Tab panel body -->
+					<button id="toggleLabelMode" class="btn btn-info" style="width: 100%; margin-top: 10px;">Toggle to Arrow Mode</button>
+
                 </div>
                 <div class="panel-body" style="overflow-y: auto;">
                     <div class="list-group" id="labelList">
@@ -131,7 +134,7 @@
 						<input type="range" id="labelFontSizeSlider" class="form-control" value="4.5" min="1" max="10" step="0.1" style="width: calc(100% - 75px);">
 						<input type="number" id="labelFontSizeInput" class="form-control" value="4.5" min="1" max="100" step="0.1" style="width: 75px;">
 					</div>
-
+					
 					<!-- Unified Label Offset Inputs with Font Selection Dropdown -->
 					<div class="input-group" style="margin-top: 10px;">
 						<span class="input-group-addon">Offset (X/Y):</span>
@@ -158,6 +161,21 @@
 							<option value="Inconsolata">Inconsolata</option>      <!-- Another great option for code -->
 							<option value="Raleway">Raleway</option>              <!-- Modern and elegant font -->
 							<option value="Ubuntu">Ubuntu</option>                <!-- Popular in Linux environments -->
+						</select>
+					</div>
+					
+					<!-- Label arrow Size Slider and Input -->
+					<div class="input-group" style="margin-top: 10px;">
+						<span class="input-group-addon">Arrow Head Size (%):</span>
+						<input type="range" id="arrowHeadSizeSlider" class="form-control" value="45" min="1" max="100" step="0.1" style="width: calc(100% - 75px);">
+						<input type="number" id="arrowHeadSizeInput" class="form-control" value="45" min="1" max="100" step="0.1" style="width: 75px;">
+					</div>
+					<!-- Dropdown for selecting Arrowhead Type -->
+					<div class="input-group" style="margin-top: 10px;">
+						<span class="input-group-addon">Arrowhead Type:</span>
+						<select id="arrowHeadTypeSelect" class="form-control">
+							<option value="standard">Standard</option>
+							<option value="triangle">Triangle</option>
 						</select>
 					</div>
 
@@ -218,8 +236,8 @@ var ctx = c.getContext("2d");
 var image = new Image();
 var originalWidth, originalHeight;
 var scale = 1;
-var zoomMode = 'top-left'; // Default zoom mode
 var labelFontSizePercentage = 4.5; // Default value as 4.5%
+var arrowHeadSize = 45; // Default value as 45
 var labelOffsetX = 0; // Default horizontal offset (in pixels)
 var labelOffsetY = 0; // Default vertical offset (in pixels)
 
@@ -270,6 +288,14 @@ document.getElementById("fontSelect").addEventListener("change", function() {
     applyFontSelection();
 });
 
+document.addEventListener('DOMContentLoaded', function() {
+    var savedLabelMode = localStorage.getItem('labelMode');
+    if (savedLabelMode) {
+        labelMode = savedLabelMode;
+        document.getElementById('toggleLabelMode').textContent = 
+            labelMode === 'box' ? 'Toggle to Arrow Mode' : 'Toggle to Box Mode';
+    }
+});
 
 // Function to load predefined labels from localStorage or use defaults
 function loadPredefinedLabels() {
@@ -296,32 +322,90 @@ function savePredefinedLabels() {
 // Initialize predefined labels with values from localStorage if available
 loadPredefinedLabels();
 
-function drawLabels(name, xMin, xMax, yMin, yMax, color) {
+// Initialize the arrow head type (standard by default)
+var arrowHeadType = 'standard';
+
+function loadArrowHeadType() {
+    const savedArrowHeadType = localStorage.getItem('arrowHeadType');
+    if (savedArrowHeadType) {
+        arrowHeadType = savedArrowHeadType;
+        document.getElementById("arrowHeadTypeSelect").value = arrowHeadType;
+    } else {
+        arrowHeadType = 'standard'; // Default type
+    }
+}
+
+document.getElementById("arrowHeadTypeSelect").addEventListener("change", function() {
+    arrowHeadType = this.value;
+    localStorage.setItem('arrowHeadType', arrowHeadType);
+    resizeCanvas();  // Redraw the canvas with the new arrowhead type
+});
+
+// Function to draw labels (both boxes and arrows)
+function drawLabels(label) {
+    const { name, xMin, xMax, yMin, yMax, color, type } = label;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.rect(
-        xMin * scale + offsetX,  // Apply offsetX
-        yMin * scale + offsetY,  // Apply offsetY
-        (xMax - xMin) * scale,
-        (yMax - yMin) * scale
-    );
     ctx.lineWidth = 3;
-    ctx.stroke();
 
-    // Set font size proportional to the image width based on user-defined percentage
-    var fontSize = (labelFontSizePercentage / 100) * originalWidth;
+    if (type === 'box') {
+        // Draw a rectangle (bounding box)
+        ctx.beginPath();
+        ctx.rect(xMin * scale + offsetX, yMin * scale + offsetY, (xMax - xMin) * scale, (yMax - yMin) * scale);
+        ctx.stroke();
+    } else if (type === 'arrow') {
+        // Draw the line of the arrow
+        ctx.beginPath();
+        ctx.moveTo(xMin * scale + offsetX, yMin * scale + offsetY);
+        ctx.lineTo(xMax * scale + offsetX, yMax * scale + offsetY);
+        ctx.stroke();
+
+        // Calculate the arrowhead
+        const headlen = arrowHeadSize * scale; // Scale the arrowhead size
+        const angle = Math.atan2(yMax - yMin, xMax - xMin);
+
+        if (arrowHeadType === 'standard') {
+            // Standard arrowhead
+            ctx.beginPath();
+            ctx.moveTo(xMin * scale + offsetX, yMin * scale + offsetY);
+			ctx.lineTo(xMax * scale + offsetX, yMax * scale + offsetY);
+			ctx.stroke();			
+
+			ctx.lineTo(
+				xMax * scale + offsetX - headlen * Math.cos(angle - Math.PI / 6),
+				yMax * scale + offsetY - headlen * Math.sin(angle - Math.PI / 6)
+			);
+			ctx.moveTo(xMax * scale + offsetX, yMax * scale + offsetY);
+			ctx.lineTo(
+				xMax * scale + offsetX - headlen * Math.cos(angle + Math.PI / 6),
+				yMax * scale + offsetY - headlen * Math.sin(angle + Math.PI / 6)
+			);
+			ctx.stroke();
+		
+        } else if (arrowHeadType === 'triangle') {
+            // Triangle arrowhead
+            ctx.beginPath();
+            ctx.moveTo(
+                xMax * scale + offsetX - headlen * Math.cos(angle - Math.PI / 6),
+                yMax * scale + offsetY - headlen * Math.sin(angle - Math.PI / 6)
+            );
+            ctx.lineTo(
+                xMax * scale + offsetX - headlen * Math.cos(angle + Math.PI / 6),
+                yMax * scale + offsetY - headlen * Math.sin(angle + Math.PI / 6)
+            );
+            ctx.lineTo(xMax * scale + offsetX, yMax * scale + offsetY);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+
+    // Set font size proportional to the image width
+    const fontSize = (labelFontSizePercentage / 100) * originalWidth;
     ctx.font = `${fontSize * scale}px ${labelFont}`;
 
     // Apply offsets to the label position
-    ctx.fillText(
-        name,
-        xMin * scale + offsetX + labelOffsetX,  // Apply horizontal offset
-        yMin * scale + offsetY + labelOffsetY   // Apply vertical offset
-    );
+    ctx.fillText(name, xMin * scale + offsetX + labelOffsetX, yMin * scale + offsetY + labelOffsetY);
 }
-
-
 
 
 // Function to initialize the predefined labels panel
@@ -359,9 +443,12 @@ function updatePredefinedLabelColor(index, newColor) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    loadLabelFontSizePercentage();  // Load the font size percentage
-    loadLabelOffsets();  // Load the label offsets
-    initPredefinedLabels();  // Initialize the predefined labels
+    loadLabelFontSizePercentage();
+    loadLabelOffsets();
+    loadPredefinedLabels();
+    loadArrowHeadSize();
+    loadArrowHeadType();  // Load arrow head type
+    initPredefinedLabels();
 });
 
 
@@ -399,11 +486,10 @@ function resizeCanvas() {
 
     // Draw the scaled image on the canvas starting from the top-left corner
     ctx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
+	
+    // Redraw all labels with the new scale and offsets
+    labels.forEach(drawLabels);
 
-    // Redraw all labels with the new scale and offsets, using the top-left as the reference
-    labels.forEach(function(label) {
-        drawLabels(label.name, label.xMin, label.xMax, label.yMin, label.yMax, label.color);
-    });
 }
 
 // Dragging logic
@@ -492,12 +578,12 @@ document.getElementById('downloadButton').addEventListener('click', function() {
     downloadCanvas.height = originalHeight;
     var downloadCtx = downloadCanvas.getContext('2d');
 
-    // Draw the image on the new canvas
+    // Draw the image on the new canvas without applying offsets
     downloadCtx.drawImage(image, 0, 0, originalWidth, originalHeight);
 
-    // Draw the labels on the new canvas
+    // Draw the labels on the new canvas, ensuring no offsets and scale = 1
     labels.forEach(function(label) {
-        drawLabelsOnCanvas(downloadCtx, label.name, label.xMin, label.xMax, label.yMin, label.yMax, label.color);
+        drawLabelsOnCanvas(downloadCtx, label, true); // Pass true for download mode
     });
 
     // Convert the canvas to an image and trigger download
@@ -507,23 +593,83 @@ document.getElementById('downloadButton').addEventListener('click', function() {
     link.click();
 });
 
-// Helper function to draw labels on a specific canvas context
-function drawLabelsOnCanvas(ctx, name, xMin, xMax, yMin, yMax, color) {
+// Helper function to draw labels and arrows on a specific canvas context
+function drawLabelsOnCanvas(ctx, label, download = false) {
+    const { name, xMin, xMax, yMin, yMax, color, type } = label;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.rect(xMin, yMin, xMax - xMin, yMax - yMin);
     ctx.lineWidth = 3;
-    ctx.stroke();
+
+    // Use 1 (100%) scale for downloading, otherwise use the current scale
+    const effectiveScale = download ? 1 : scale;
+    const effectiveOffsetX = download ? 0 : offsetX;
+    const effectiveOffsetY = download ? 0 : offsetY;
+
+    if (type === 'box') {
+        // Draw a rectangle (bounding box)
+        ctx.beginPath();
+        ctx.rect(
+            xMin * effectiveScale + effectiveOffsetX,
+            yMin * effectiveScale + effectiveOffsetY,
+            (xMax - xMin) * effectiveScale,
+            (yMax - yMin) * effectiveScale
+        );
+        ctx.stroke();
+    } else if (type === 'arrow') {
+        // Draw the line of the arrow
+        ctx.beginPath();
+        ctx.moveTo(
+            xMin * effectiveScale + effectiveOffsetX,
+            yMin * effectiveScale + effectiveOffsetY
+        );
+        ctx.lineTo(
+            xMax * effectiveScale + effectiveOffsetX,
+            yMax * effectiveScale + effectiveOffsetY
+        );
+        ctx.stroke();
+
+        // Calculate the arrowhead
+        const headlen = arrowHeadSize * effectiveScale;
+        const angle = Math.atan2(yMax - yMin, xMax - xMin);
+
+        if (arrowHeadType === 'standard') {
+            ctx.lineTo(
+                xMax * effectiveScale + effectiveOffsetX - headlen * Math.cos(angle - Math.PI / 6),
+                yMax * effectiveScale + effectiveOffsetY - headlen * Math.sin(angle - Math.PI / 6)
+            );
+            ctx.moveTo(xMax * effectiveScale + effectiveOffsetX, yMax * effectiveScale + effectiveOffsetY);
+            ctx.lineTo(
+                xMax * effectiveScale + effectiveOffsetX - headlen * Math.cos(angle + Math.PI / 6),
+                yMax * effectiveScale + effectiveOffsetY - headlen * Math.sin(angle + Math.PI / 6)
+            );
+            ctx.stroke();
+        } else if (arrowHeadType === 'triangle') {
+            ctx.beginPath();
+            ctx.moveTo(
+                xMax * effectiveScale + effectiveOffsetX - headlen * Math.cos(angle - Math.PI / 6),
+                yMax * effectiveScale + effectiveOffsetY - headlen * Math.sin(angle - Math.PI / 6)
+            );
+            ctx.lineTo(
+                xMax * effectiveScale + effectiveOffsetX - headlen * Math.cos(angle + Math.PI / 6),
+                yMax * effectiveScale + effectiveOffsetY - headlen * Math.sin(angle + Math.PI / 6)
+            );
+            ctx.lineTo(xMax * effectiveScale + effectiveOffsetX, yMax * effectiveScale + effectiveOffsetY);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
 
     // Set font size proportional to the image width
-    var fontSize = (labelFontSizePercentage / 100) * originalWidth;
-    ctx.font = `${fontSize}px Verdana`;
+    const fontSize = (labelFontSizePercentage / 100) * originalWidth;
+    ctx.font = `${fontSize * effectiveScale}px ${labelFont}`;
 
-    // Apply label offsets
-    ctx.fillText(name, xMin + labelOffsetX, yMin + labelOffsetY);
+    // Draw label text
+    ctx.fillText(
+        name,
+        xMin * effectiveScale + effectiveOffsetX + labelOffsetX,
+        yMin * effectiveScale + effectiveOffsetY + labelOffsetY
+    );
 }
-
 
 
 function addWheelEventListener(element) {
@@ -556,6 +702,18 @@ addWheelEventListener(document.getElementById('sidebar'));
 
 var clicked = false;
 var fPoint = {};
+var labelMode = 'box'; // Default mode is 'box'
+
+document.getElementById('toggleLabelMode').addEventListener('click', function() {
+    if (labelMode === 'box') {
+        labelMode = 'arrow';
+        this.textContent = 'Toggle to Box Mode';
+    } else {
+        labelMode = 'box';
+        this.textContent = 'Toggle to Arrow Mode';
+    }
+    localStorage.setItem('labelMode', labelMode); // Save labelMode to local storage
+});
 
 c.onclick = function(e) {
     var rect = c.getBoundingClientRect();
@@ -568,47 +726,75 @@ c.onclick = function(e) {
     }
 
     if (!clicked) {
-        ctx.strokeStyle = "pink";
-        ctx.fillStyle = "pink";
+        ctx.strokeStyle = "red";
+        ctx.fillStyle = "red";
         ctx.beginPath();
         ctx.arc((x * scale + offsetX), (y * scale + offsetY), 3, 0, 2 * Math.PI, false);
         ctx.fill();
         fPoint = { x: x, y: y };
+        console.log("First click at: ", fPoint);  // Log first click coordinates
     } else {
-        var xMin = Math.min(fPoint.x, x);
-        var xMax = Math.max(fPoint.x, x);
-        var yMin = Math.min(fPoint.y, y);
-        var yMax = Math.max(fPoint.y, y);
-
-        // Ensure the bounding box stays within the image boundaries
-        xMin = Math.max(xMin, 0);
-        yMin = Math.max(yMin, 0);
-        xMax = Math.min(xMax, originalWidth);
-        yMax = Math.min(yMax, originalHeight);
-
-        fPoint = {};
         var predefinedLabel = predefinedLabels[labels.length % predefinedLabels.length];
-        labels.push({
-            id: (labels.length + 1).toString(),
-            name: predefinedLabel.name,
-            xMin: xMin,
-            xMax: xMax,
-            yMin: yMin,
-            yMax: yMax,
-            color: predefinedLabel.color
-        });
-        fetch(`/add/${labels.length}?xMin=${xMin}&xMax=${xMax}&yMin=${yMin}&yMax=${yMax}&color=${encodeURIComponent(predefinedLabel.color)}&name=${encodeURIComponent(predefinedLabel.name)}`)
-            .then(response => response.text())
-            .then(() => {
-                resizeCanvas();
-                updateLabelList();
+        var labelType = (labelMode === 'box') ? 'box' : 'arrow';
+        var labelData = {};
+
+        if (labelMode === 'box') {
+            var xMin = Math.min(fPoint.x, x);
+            var xMax = Math.max(fPoint.x, x);
+            var yMin = Math.min(fPoint.y, y);
+            var yMax = Math.max(fPoint.y, y);
+
+            // Ensure the bounding box stays within the image boundaries
+            xMin = Math.max(xMin, 0);
+            yMin = Math.max(yMin, 0);
+            xMax = Math.min(xMax, originalWidth);
+            yMax = Math.min(yMax, originalHeight);
+
+            labelData = {
+                id: (labels.length + 1).toString(),
+                name: predefinedLabel.name,
+                xMin: xMin,
+                xMax: xMax,
+                yMin: yMin,
+                yMax: yMax,
+                color: predefinedLabel.color,
+                type: labelType
+            };
+            labels.push(labelData);
+        } else if (labelMode === 'arrow') {
+            labelData = {
+                id: (labels.length + 1).toString(),
+                name: predefinedLabel.name,
+                xMin: fPoint.x,  // Start of the arrow
+                yMin: fPoint.y,
+                xMax: x,         // End of the arrow
+                yMax: y,
+                color: predefinedLabel.color,
+                type: labelType
+            };
+            labels.push(labelData);
+        }
+
+        // Log the label data before sending
+        console.log("Sending label data to server: ", labelData);
+
+        // Send the label data to the server
+        fetch(`/add/${labelData.id}?xMin=${labelData.xMin}&xMax=${labelData.xMax}&yMin=${labelData.yMin}&yMax=${labelData.yMax}&color=${encodeURIComponent(labelData.color)}&name=${encodeURIComponent(labelData.name)}&type=${labelData.type}`)
+            .then(response => {
+                if (response.ok) {
+                    console.log("Label added successfully:", response);
+                } else {
+                    console.error("Failed to add label:", response.statusText);
+                }
             })
             .catch(error => console.error('Error adding label:', error));
+
+        fPoint = {};  // Clear after use
+        resizeCanvas();
+        updateLabelList();
     }
     clicked = !clicked;
 };
-
-
 
 
 function deleteLabel(id) {
@@ -675,9 +861,9 @@ image.src = "image/{{ image }}";
 
 function saveCSV() {
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "ID,Name,xMin,xMax,yMin,yMax,Color\n";  // CSV headers
+    csvContent += "ID,Name,xMin,xMax,yMin,yMax,Color,Type\n";  // Include Type in CSV headers
     labels.forEach(label => {
-        let row = `${label.id},${label.name},${label.xMin},${label.xMax},${label.yMin},${label.yMax},${label.color}`;
+        let row = `${label.id},${label.name},${label.xMin},${label.xMax},${label.yMin},${label.yMax},${label.color},${label.type}`;
         csvContent += row + "\n";
     });
     
@@ -718,12 +904,30 @@ function loadLabelFontSizePercentage() {
     }
 }
 
+
+document.getElementById("arrowHeadSizeInput").addEventListener("input", function() {
+    arrowHeadSize = parseFloat(this.value);
+    localStorage.setItem('arrowHeadSize', arrowHeadSize);
+});
+
+function loadArrowHeadSize() {
+    const savedArrowHeadSize = localStorage.getItem('arrowHeadSize');
+    if (savedArrowHeadSize) {
+        arrowHeadSize = parseFloat(savedArrowHeadSize);
+        document.getElementById("arrowHeadSizeInput").value = arrowHeadSize;
+        document.getElementById("arrowHeadSizeSlider").value = arrowHeadSize;
+    } else {
+        arrowHeadSize = 45; // Default value
+    }
+}
+
+
 function resetPredefinedLabelsToDefault() {
     // Reset predefined labels to default
     predefinedLabels = [
         { name: "Apple", color: "#00FFFF" },
         { name: "Banana", color: "#FF00FF" },
-        { name: "Peach", color: "#008000" },
+        { name: "Peach", color: "#00FF00" },
         { name: "Grapes", color: "#FFFF00" },
         { name: "Lemon", color: "#FF0000" }
     ];
@@ -731,6 +935,10 @@ function resetPredefinedLabelsToDefault() {
     // Reset label font size to default
     labelFontSizePercentage = 4.5;
     document.getElementById("labelFontSizeInput").value = labelFontSizePercentage;
+	
+    // Reset arrow head size to default
+    arrowHeadSize = 45;
+    document.getElementById("arrowHeadSizeInput").value = arrowHeadSize;
 
     // Reset label offsets to default
     labelOffsetX = 0;
@@ -748,7 +956,8 @@ function resetPredefinedLabelsToDefault() {
     localStorage.setItem('labelOffsetX', labelOffsetX);
     localStorage.setItem('labelOffsetY', labelOffsetY);
     localStorage.setItem('labelFont', labelFont);
-
+    localStorage.setItem('arrowHeadSize', arrowHeadSize);
+	
     // Re-initialize the predefined labels panel to reflect the default values
     initPredefinedLabels();
 
@@ -831,6 +1040,15 @@ document.getElementById("labelFontSizeSlider").addEventListener("input", functio
     resizeCanvas();  // Redraw the canvas with the new font size
 });
 
+// Sync the slider with the input field arrowhead
+document.getElementById("arrowHeadSizeSlider").addEventListener("input", function() {
+    arrowHeadSize = parseFloat(this.value);
+    document.getElementById("arrowHeadSizeInput").value = arrowHeadSize;
+    localStorage.setItem('arrowHeadSize', arrowHeadSize);
+    resizeCanvas();  // Redraw the canvas with the new arrow size
+});
+
+
 // Sync the input field with the slider
 document.getElementById("labelFontSizeInput").addEventListener("input", function() {
     labelFontSizePercentage = parseFloat(this.value);
@@ -838,6 +1056,15 @@ document.getElementById("labelFontSizeInput").addEventListener("input", function
     localStorage.setItem('labelFontSizePercentage', labelFontSizePercentage);
     resizeCanvas();  // Redraw the canvas with the new font size
 });
+
+// Sync the input field with the slider
+document.getElementById("arrowHeadSizeInput").addEventListener("input", function() {
+    arrowHeadSize = parseFloat(this.value);
+    document.getElementById("arrowHeadSizeSlider").value = arrowHeadSize;
+    localStorage.setItem('arrowHeadSize', arrowHeadSize);
+    resizeCanvas();  // Redraw the canvas with the new arrow size
+});
+
 </script>
 
 <!-- Include jQuery -->
