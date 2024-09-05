@@ -5,41 +5,54 @@
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <link href="https://maxcdn.bootstrapcdn.com/bootswatch/3.3.7/cerulean/bootstrap.min.css" rel="stylesheet"></link>
     <style>
+        .hidden {
+            visibility: hidden;  /* Hide the content initially */
+        }
+        
         body {
             margin: 0;
             height: 100%;
             overflow: hidden; /* Prevent scrolling of the body */
+			object-position: top left; /* Align the image to the top-left */
+            display: flex; /* Make the body a flex container */
+}
         }
         #sidebar {
-            width: 25%;
+            width: 25%; /* Initial width */
+            min-width: 300px; /* Minimum width for the sidebar */
             height: 100%;
+            overflow-y: auto;
             float: left;
-            z-index: 8000;
-            margin-bottom: 0px;
         }
-		#content {
-			width: 75%;
-			height: 100%; /* Use the full height of the screen */
-			float: right;
-			z-index: 8000;
-			margin-bottom: 0px;
-			overflow: hidden;
-			display: flex;           /* Flexbox layout to make the canvas fill the container */
-			flex-direction: column;  /* Ensures children grow vertically */
-		}
+
+        #resizer {
+            width: 5px;
+            height: 100%;
+            background-color: #ccc;
+            cursor: ew-resize; /* Cursor changes to show it's resizable */
+            float: left;
+        }
+
+        #content {
+            flex-grow: 1;
+            height: 100%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
 
 		#canvas {
 			flex-grow: 1;            /* Make canvas grow to fill available space */
 			width: 100%;             /* Ensure the canvas takes full width */
-			height: calc(100vh - 40px); /* Use calc() to ensure full height, adjusting for any fixed controls */
-			margin: 0;
-			padding: 0;
-			display: block;          /* Ensures the canvas behaves like a block element */
-			background-color: white; /* Optional: set a background to visually confirm canvas bounds */
-			cursor: crosshair; /* Set the cursor to crosshair */
-		}
+			height: 100%;            /* Allow height to adjust based on content */
+            max-height: 100%; //(100vh - 40px); /* Ensure it doesn't overflow vertically */
+            background-color: white; /* Optional: set a background */
+            cursor: crosshair;
+            object-fit: contain; /* Ensure the image fits within the canvas */
+            object-position: top left; /* Align the image to the top-left */
+        }
 
-		
         #zoomControls {
             position: fixed;
             bottom: 0;
@@ -49,21 +62,31 @@
             box-shadow: 0 -2px 5px rgba(0,0,0,0.1); /* Optional shadow for better visibility */
             display: flex;
             align-items: center;
-            justify-content: center;
+            justify-content: space-between; /* Space out the left, slider, and right buttons */
+			z-index: 9000;
         }
+        
+        .left-buttons, .right-buttons {
+            display: flex;
+            align-items: center;
+        }
+        
         #resizeSlider {
-            width: 60%;
+            flex-grow: 1; /* Allow the slider to grow and fill available space */
+            margin: 0 10px; /* Add some margin to give space between the slider and the buttons */
         }
-        #debugInfo {
-            position: fixed;
-            top: 0;
-            right: 0;
-            background: #fff;
-            padding: 10px;
-            border: 1px solid #ddd;
-            z-index: 9000;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        
+        #currentScale {
+            margin-right: 10px; /* Space between the scale and the right buttons */
         }
+        
+		.fixed-bottom-left {
+			position: fixed;
+			bottom: 10px;
+			left: 10px;
+			z-index: 10000; /* High z-index to keep buttons on top */
+		}
+		
         /* Tab styling */
         .nav-tabs {
             margin-bottom: 10px;
@@ -74,7 +97,7 @@
         }
     </style>
 </head>
-<body>
+<body class="hidden">
 <nav id="sidebar">
     <ul class="nav nav-tabs">
         <li class="active"><a data-toggle="tab" href="#labelsTab">Labels</a></li>
@@ -167,8 +190,8 @@
 					<!-- Label arrow Size Slider and Input -->
 					<div class="input-group" style="margin-top: 10px;">
 						<span class="input-group-addon">Arrow Head Size (%):</span>
-						<input type="range" id="arrowHeadSizeSlider" class="form-control" value="45" min="1" max="100" step="0.1" style="width: calc(100% - 75px);">
-						<input type="number" id="arrowHeadSizeInput" class="form-control" value="45" min="1" max="100" step="0.1" style="width: 75px;">
+						<input type="range" id="arrowHeadSizeSlider" class="form-control" value="5" min="0" max="20" step="0.1" style="width: calc(100% - 75px);">
+						<input type="number" id="arrowHeadSizeInput" class="form-control" value="5" min="0" max="500" step="0.1" style="width: 75px;">
 					</div>
 					<!-- Dropdown for selecting Arrowhead Type -->
 					<div class="input-group" style="margin-top: 10px;">
@@ -177,6 +200,13 @@
 							<option value="standard">Standard</option>
 							<option value="triangle">Triangle</option>
 						</select>
+					</div>
+					
+					<!-- Add this inside your predefined labels tab or wherever you have your other sliders -->
+					<div class="input-group" style="margin-top: 10px;">
+						<span class="input-group-addon">Line Width:</span>
+						<input type="range" id="lineWidthSlider" class="form-control" value="1.5" min="0" max="20" step="0.1" style="width: calc(100% - 75px);">
+						<input type="number" id="lineWidthInput" class="form-control" value="1.5" min="0" max="500" step="0.1" style="width: 75px;">
 					</div>
 
 					<!-- Second: Add New Label Button -->
@@ -191,7 +221,7 @@
 
     </div>
 </nav>
-
+<div id="resizer"></div>
 <div id="content" class="container">
 
     <div style="overflow: hidden">
@@ -199,34 +229,22 @@
     </div>
 </div>
 <div id="zoomControls">
-    <input type="range" id="resizeSlider" min="10" max="200" value="100">
-    <button id="resetButton" class="btn btn-primary">Reset to 100%</button>
-    <span id="currentScale">100%</span>
-    <button id="downloadButton" class="btn btn-success" style="margin-left: 10px;">Download Image</button>
-	<button id="saveCsvButton" class="btn btn-warning" style="margin-left: 10px;">Save CSV</button>
-</div>
-<div style="position: fixed; bottom: 10px; left: 10px;">
-    <!-- Previous Image Button -->
-    {% if not_start %}
-        <a href="/previous" class="btn btn-primary" type="button">
+    <div class="left-buttons">
+        <a href="/previous" class="btn btn-primary" style="margin-right: 10px;">
             <span class="glyphicon glyphicon-arrow-left"></span>
         </a>
-    {% else %}
-        <a href="/previous" class="btn btn-primary" type="button">
-            <span class="glyphicon glyphicon-ok"> </span>
-        </a>
-    {% endif %}
-
-    <!-- Next Image Button -->
-    {% if not_end %}
-        <a href="/next" class="btn btn-primary" type="button">
+        <a href="/next" class="btn btn-primary">
             <span class="glyphicon glyphicon-arrow-right"></span>
         </a>
-    {% else %}
-        <a href="/next" class="btn btn-primary" type="button">
-            <span class="glyphicon glyphicon-ok"> </span>
-        </a>
-    {% endif %}
+    </div>
+    <input type="range" id="resizeSlider" min="2.5" max="150" value="100">
+    <span id="currentScale">100%</span>
+
+    <div class="right-buttons">
+        <button id="resetButton" class="btn btn-primary">Reset to 100%</button>
+        <button id="downloadButton" class="btn btn-success" style="margin-left: 10px;">Download Image</button>
+        <button id="saveCsvButton" class="btn btn-warning" style="margin-left: 10px;">Save CSV</button>
+    </div>
 </div>
 
 <script>
@@ -243,6 +261,35 @@ var labelOffsetY = 0; // Default vertical offset (in pixels)
 
 var offsetX = 0, offsetY = 0;  // Track offsets for dragging
 
+const resizer = document.getElementById('resizer');
+const sidebar = document.getElementById('sidebar');
+const content = document.getElementById('content');
+
+resizer.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+
+    document.addEventListener('mousemove', resizeSidebar);
+    document.addEventListener('mouseup', stopResizing); // Attach the stopResizing listener
+});
+
+function resizeSidebar(e) {
+    const newSidebarWidth = e.clientX - sidebar.getBoundingClientRect().left;
+
+    if (newSidebarWidth > 200 && newSidebarWidth < window.innerWidth - 200) {
+        sidebar.style.width = `${newSidebarWidth}px`;
+        content.style.width = `calc(100% - ${newSidebarWidth}px)`;
+
+        // Redraw the canvas after resizing the sidebar
+        resizeCanvas();
+    }
+}
+
+// Add this function to stop resizing when the mouse is released
+function stopResizing() {
+    document.removeEventListener('mousemove', resizeSidebar);  // Stop the resize action
+    document.removeEventListener('mouseup', stopResizing);     // Remove the mouseup listener
+}
+
 var predefinedLabels = [
     { name: "Apple", color: "#00FFFF" },
     { name: "Banana", color: "#FF00FF" },
@@ -250,6 +297,55 @@ var predefinedLabels = [
     { name: "Grapes", color: "#FFFF00" },
     { name: "Lemon", color: "#FF0000" }
 ];  // Add default predefined labels or load them from localStorage
+
+var lineWidth = parseFloat(localStorage.getItem('lineWidth')) || 1.5; // Default line width
+
+// Load the saved line width from local storage
+function loadLineWidth() {
+    const savedLineWidth = localStorage.getItem('lineWidth');
+    if (savedLineWidth !== null) {
+        lineWidth = parseFloat(savedLineWidth);
+        document.getElementById("lineWidthSlider").value = lineWidth;
+        document.getElementById("lineWidthInput").value = lineWidth;
+    }
+}
+
+// Sync the slider with the input field
+document.getElementById("lineWidthSlider").addEventListener("input", function() {
+    lineWidth = parseFloat(this.value);
+    document.getElementById("lineWidthInput").value = lineWidth;
+    localStorage.setItem('lineWidth', lineWidth);
+    resizeCanvas();  // Redraw the canvas with the new line width
+});
+
+// Sync the input field with the slider
+document.getElementById("lineWidthInput").addEventListener("input", function() {
+    lineWidth = parseFloat(this.value);
+    document.getElementById("lineWidthSlider").value = lineWidth;
+    localStorage.setItem('lineWidth', lineWidth);
+    resizeCanvas();  // Redraw the canvas with the new line width
+});
+
+// Load the saved line width when the document is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    loadLineWidth();
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    const savedSidebarWidth = localStorage.getItem('sidebarWidth');
+    const sidebar = document.getElementById('sidebar');
+    const content = document.getElementById('content');
+
+    if (savedSidebarWidth) {
+        sidebar.style.width = `${savedSidebarWidth}px`;
+        content.style.width = `calc(100% - ${savedSidebarWidth}px)`;
+    }
+        // Set canvas dimensions after the sidebar width is set
+        setCanvasDimensions();
+
+        // Show the body only after everything is set
+        document.body.classList.remove('hidden');
+    });
 
 var labelFont = "Verdana"; // Default font
 
@@ -346,8 +442,7 @@ function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
     const { name, xMin, xMax, yMin, yMax, color, type } = label;
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 3 * scale;
-
+    ctx.lineWidth = ((lineWidth / 100) * originalWidth) * scale;
 
     if (type === 'box') {
         // Draw a rectangle (bounding box)
@@ -362,7 +457,7 @@ function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
         ctx.stroke();
 
         // Calculate the arrowhead
-        const headlen = arrowHeadSize * scale; // Scale the arrowhead size
+        const headlen = ((arrowHeadSize / 100) * originalWidth) * scale; // Scale the arrowhead size
         const angle = Math.atan2(yMax - yMin, xMax - xMin);
 
         if (arrowHeadType === 'standard') {
@@ -401,8 +496,16 @@ function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
     const fontSize = (labelFontSizePercentage / 100) * originalWidth;
     ctx.font = `${fontSize * scale}px ${labelFont}`;
 
-    // Apply offsets to the label position
-    ctx.fillText(name, xMin * scale + offsetX + labelOffsetX, yMin * scale + offsetY + labelOffsetY);
+    // Scale the offsets based on the original image width
+    const scaledLabelOffsetX = (labelOffsetX / 1000) * originalWidth * scale;
+    const scaledLabelOffsetY = (labelOffsetY / 1000) * originalHeight * scale;
+
+    // Apply scaled offsets to the label text position
+    ctx.fillText(
+        name,
+        (xMin * scale) + offsetX + scaledLabelOffsetX,
+        (yMin * scale) + offsetY + scaledLabelOffsetY
+    );
 }
 
 
@@ -416,18 +519,16 @@ function initPredefinedLabels() {
         labelItem.className = "list-group-item";
         labelItem.innerHTML = `
             <div class="input-group">
-                <span class="input-group-addon">Label ${index + 1}</span>
-                <input type="text" value="${label.name}" class="form-control" onchange="updatePredefinedLabelName(${index}, this.value)">
+                <input type="text" value="${label.name}" class="form-control" onchange="updatePredefinedLabelName(${index}, this.value)" style="background-color:#E5E7E9;">
                 <span class="input-group-btn">
-                    <input type="color" class="btn btn-default" value="${label.color}" onchange="updatePredefinedLabelColor(${index}, this.value)">
-                    <button class="btn btn-danger" onclick="removePredefinedLabel(${index})" type="button">Remove</button>
+                    <input type="color" class="btn btn-default" value="${label.color}" onchange="updatePredefinedLabelColor(${index}, this.value)" style="width: 34px; height: 34px; padding: 0; margin-right: 5px; margin-left: 5px;">
+                    <button class="btn btn-danger" onclick="removePredefinedLabel(${index})" type="button">-</button>
                 </span>
             </div>
         `;
         predefinedLabelList.appendChild(labelItem);
     });
 }
-
 
 // Update the name of a predefined label
 function updatePredefinedLabelName(index, newName) {
@@ -450,49 +551,84 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
+// Function to calculate and set the initial zoom to fit the image in the canvas
 function setInitialZoom() {
-    var cWidth = c.clientWidth;
-    var cHeight = c.clientHeight;
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
 
-    // Calculate the scale factors for both dimensions
-    var widthScale = cWidth / originalWidth;
-    var heightScale = cHeight / originalHeight;
+    // Calculate scale factors for width and height
+    const widthScale = canvasWidth / originalWidth;
+    const heightScale = canvasHeight / originalHeight;
 
-    // Use the minimum of these scales to fit the image within the container
-    var newScale = Math.min(widthScale, heightScale);
+    // Use the smaller scale to fit the image in the canvas while maintaining aspect ratio
+    scale = Math.min(widthScale, heightScale);
 
-    // Update the scale value and slider
-    scale = newScale;
-    document.getElementById('resizeSlider').value = Math.round(newScale * 100); // Update slider value
-    document.getElementById('currentScale').innerText = `${Math.round(newScale * 100)}%`; // Update scale display
+    // Update the zoom slider and scale display
+    document.getElementById('resizeSlider').value = Math.round(scale * 100); // Set the slider
+    document.getElementById('currentScale').innerText = `${Math.round(scale * 100)}%`; // Display scale
+}
 
-    // Set the canvas dimensions and redraw the image and labels
+// Ensure the canvas dimensions are set properly
+function setCanvasDimensions() {
+    const container = document.getElementById('content');
+    const canvas = document.getElementById('canvas');
+    
+    // Ensure originalWidth and originalHeight are set
+    if (!originalWidth || !originalHeight) {
+        console.error("Image dimensions are not available. Make sure the image has loaded.");
+        return;
+    }
+
+    // Get the container's dimensions
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+
+    // Maintain the image aspect ratio
+    const aspectRatio = originalWidth / originalHeight;
+
+    if (containerWidth / containerHeight > aspectRatio) {
+        canvas.height = containerHeight;
+        canvas.width = containerHeight * aspectRatio;
+    } else {
+        canvas.width = containerWidth;
+        canvas.height = containerWidth / aspectRatio;
+    }
+
+    // Redraw canvas content after resizing
     resizeCanvas();
 }
 
-function setCanvasDimensions() {
-    c.width = c.clientWidth;
-    c.height = c.clientHeight;
-}
 
+window.addEventListener('resize', setCanvasDimensions);
+setCanvasDimensions();
+
+// Function to initialize the canvas and draw the image and labels
 function resizeCanvas() {
-    // Keep the canvas dimensions fixed
-    setCanvasDimensions();
+    const ctx = canvas.getContext('2d');
+
+    // Ensure the canvas fills the entire available space
+    canvas.width = canvas.parentElement.clientWidth;
+    canvas.height = canvas.parentElement.clientHeight;
 
     // Clear the canvas before redrawing
-    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Calculate the new dimensions of the image based on the scale
-    const newWidth = originalWidth * scale;
-    const newHeight = originalHeight * scale;
+    // Check if the image is loaded and draw it
+    if (image.complete && originalWidth && originalHeight) {
+        // Calculate the scaled dimensions of the image
+        const newWidth = originalWidth * scale;
+        const newHeight = originalHeight * scale;
 
-    // Draw the scaled image on the canvas starting from the top-left corner
-    ctx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
+        // Draw the image on the canvas
+        ctx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
 
-    // Update to pass ctx, scale, offsetX, offsetY
-    labels.forEach(function(label) {
-        drawLabels(ctx, label, scale, offsetX, offsetY);
-    });
+        // Redraw labels (boxes/arrows) on top of the image
+        labels.forEach(function(label) {
+            drawLabels(ctx, label, scale, offsetX, offsetY);
+        });
+    } else {
+        console.error("Image not loaded yet.");
+    }
 }
 
 // Dragging logic
@@ -550,7 +686,16 @@ function initializeCanvasWithImage(image) {
 }
 
 image.onload = function() {
-    initializeCanvasWithImage(image);
+    originalWidth = image.width;
+    originalHeight = image.height;
+    // Set canvas dimensions based on the loaded image
+    setCanvasDimensions();
+    
+    // Calculate the initial zoom scale to fit the image within the canvas
+    setInitialZoom();
+
+    // Draw the image on the canvas for the first time
+    resizeCanvas();
 };
 
 document.getElementById('resizeSlider').addEventListener('input', function() {
@@ -598,11 +743,11 @@ function addWheelEventListener(element) {
         var zoomDirection = event.deltaY > 0 ? -1 : 1;
         
         // Adjust the zoom scale
-        var zoomFactor = 0.1; // Change this value to adjust zoom sensitivity
+        var zoomFactor = 0.075; // Change this value to adjust zoom sensitivity
         scale += zoomDirection * zoomFactor;
         
         // Keep scale within range
-        scale = Math.max(0.1, Math.min(scale, 5)); // Adjust min and max scale as needed
+        scale = Math.max(0.025, Math.min(scale, 8)); // Adjust min and max scale as needed
         
         // Update the slider and scale display
         document.getElementById('resizeSlider').value = Math.round(scale * 100);
@@ -616,7 +761,7 @@ function addWheelEventListener(element) {
 // Add wheel event listener to #content, #zoomControls, and #sidebar
 addWheelEventListener(document.getElementById('content'));
 addWheelEventListener(document.getElementById('zoomControls'));
-addWheelEventListener(document.getElementById('sidebar'));
+// addWheelEventListener(document.getElementById('sidebar'));
 
 var clicked = false;
 var fPoint = {};
@@ -634,9 +779,11 @@ document.getElementById('toggleLabelMode').addEventListener('click', function() 
 });
 
 function getAdjustedCoordinates(e) {
-    var rect = c.getBoundingClientRect();
-    var x = (e.clientX - rect.left - offsetX) / scale;  // Adjust for offsetX
-    var y = (e.clientY - rect.top - offsetY) / scale;   // Adjust for offsetY
+    var rect = c.getBoundingClientRect();  // Get canvas dimensions relative to viewport
+
+    // Calculate the correct coordinates by adjusting for canvas position, offsets, and scale
+    var x = (e.clientX - rect.left - offsetX) / scale;
+    var y = (e.clientY - rect.top - offsetY) / scale;
 
     return { x, y };
 }
@@ -700,8 +847,10 @@ c.onclick = function(e) {
         labels.push(labelData);
 
         // Log the label data before sending
-        console.log("Sending label data to server: ", labelData);
-
+        //console.log("Sending label data to server: ", labelData);
+		
+		console.log("Adjusted Click Coordinates: ", { x, y });
+		
         // Draw the label immediately using the updated drawLabels function
         drawLabels(ctx, labelData, scale, offsetX, offsetY);
 
