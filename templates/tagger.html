@@ -205,8 +205,8 @@
 					<!-- Add this inside your predefined labels tab or wherever you have your other sliders -->
 					<div class="input-group" style="margin-top: 10px;">
 						<span class="input-group-addon">Line Width:</span>
-						<input type="range" id="lineWidthSlider" class="form-control" value="1.5" min="0" max="20" step="0.1" style="width: calc(100% - 75px);">
-						<input type="number" id="lineWidthInput" class="form-control" value="1.5" min="0" max="500" step="0.1" style="width: 75px;">
+						<input type="range" id="lineWidthSlider" class="form-control" value="0.25" min="0" max="20" step="0.05" style="width: calc(100% - 75px);">
+						<input type="number" id="lineWidthInput" class="form-control" value="0.25" min="0" max="500" step="0.05" style="width: 75px;">
 					</div>
 
 					<!-- Second: Add New Label Button -->
@@ -255,7 +255,7 @@ var image = new Image();
 var originalWidth, originalHeight;
 var scale = 1;
 var labelFontSizePercentage = 4.5; // Default value as 4.5%
-var arrowHeadSize = 45; // Default value as 45
+var arrowHeadSize = 4.5; // Default value as 4.5
 var labelOffsetX = 0; // Default horizontal offset (in pixels)
 var labelOffsetY = 0; // Default vertical offset (in pixels)
 
@@ -298,7 +298,7 @@ var predefinedLabels = [
     { name: "Lemon", color: "#FF0000" }
 ];  // Add default predefined labels or load them from localStorage
 
-var lineWidth = parseFloat(localStorage.getItem('lineWidth')) || 1.5; // Default line width
+var lineWidth = parseFloat(localStorage.getItem('lineWidth')) || 0.25; // Default line width
 
 // Load the saved line width from local storage
 function loadLineWidth() {
@@ -638,53 +638,109 @@ function addCanvasEventListeners() {
         const mouseX = event.clientX - canvasBounds.left;
         const mouseY = event.clientY - canvasBounds.top;
 
+        let edgeFound = false;
+
         labels.forEach(label => {
-            if (isLabelClicked(label, mouseX, mouseY, scale, offsetX, offsetY)) {
+            const edge = isNearEdge(label, mouseX, mouseY, scale, offsetX, offsetY);
+            
+            // Check if we're clicking on an edge (start edge dragging)
+            if (edge) {
                 selectedLabel = label;
-                isDraggingLabel = true;
+                isDraggingEdge = true;
+                draggedEdge = edge;
                 dragStartX = mouseX;
                 dragStartY = mouseY;
+                edgeFound = true;
             }
         });
+
+        if (!edgeFound) {
+            // If no edge was found, check if a label is clicked (start label dragging)
+            labels.forEach(label => {
+                if (isLabelClicked(label, mouseX, mouseY, scale, offsetX, offsetY)) {
+                    selectedLabel = label;
+                    isDraggingLabel = true;
+                    dragStartX = mouseX;
+                    dragStartY = mouseY;
+                }
+            });
+        }
     });
 
-    c.addEventListener('mousemove', (event) => {
-        const canvasBounds = c.getBoundingClientRect();
-        const mouseX = event.clientX - canvasBounds.left;
-        const mouseY = event.clientY - canvasBounds.top;
+	c.addEventListener('mousemove', (event) => {
+		const canvasBounds = c.getBoundingClientRect();
+		const mouseX = event.clientX - canvasBounds.left;
+		const mouseY = event.clientY - canvasBounds.top;
 
-        let hoveringOverLabel = false;
+		let hoveringOverLabel = false;
+		let hoveringOverEdge = false;  // Declare this variable
+		let edgeType = null;
 
-        // Check if the mouse is hovering over any label
-        labels.forEach(label => {
-            if (isLabelClicked(label, mouseX, mouseY, scale, offsetX, offsetY)) {
-                hoveringOverLabel = true;
-            }
-        });
+		// Check if the mouse is hovering over any label
+		labels.forEach(label => {
+			const edge = isNearEdge(label, mouseX, mouseY, scale, offsetX, offsetY);
+			if (isLabelClicked(label, mouseX, mouseY, scale, offsetX, offsetY)) {
+				hoveringOverLabel = true;
+			} else if (edge) {
+				hoveringOverEdge = true;
+				edgeType = edge;
+			}
+		});
 
-        // Change cursor style if hovering over a label
-        if (hoveringOverLabel) {
-            c.style.cursor = 'pointer';
-        } else {
-            c.style.cursor = 'crosshair';
-        }
+		// Change cursor style if hovering over a label or edge
+		if (hoveringOverLabel) {
+			c.style.cursor = 'pointer';
+		} else if (hoveringOverEdge) {
+			if (edgeType.includes('top') || edgeType.includes('bottom')) {
+				c.style.cursor = 'nwse-resize';  // Example for corner edges
+			}
+		} else {
+			c.style.cursor = 'crosshair';
+		}
 
-        // Handle dragging logic
-        if (isDraggingLabel && selectedLabel) {
+		// Handle dragging logic
+		if (isDraggingLabel && selectedLabel) {
+			const deltaX = (mouseX - dragStartX) / scale;
+			const deltaY = (mouseY - dragStartY) / scale;
+
+			// Ensure offsets are treated as numbers during dragging
+            // Update label offsets as numbers
+            selectedLabel.xOffset = parseFloat(selectedLabel.xOffset || 0) + deltaX;
+            selectedLabel.yOffset = parseFloat(selectedLabel.yOffset || 0) + deltaY;
+            
+			dragStartX = mouseX;
+			dragStartY = mouseY;
+
+			resizeCanvas(); // Redraw canvas with updated label position
+		}
+
+        // Handle edge dragging
+        if (isDraggingEdge && draggedEdge) {
             const deltaX = (mouseX - dragStartX) / scale;
             const deltaY = (mouseY - dragStartY) / scale;
 
-            // Ensure offsets are treated as numbers during dragging
-            selectedLabel.xOffset = parseFloat(selectedLabel.xOffset) + deltaX;
-            selectedLabel.yOffset = parseFloat(selectedLabel.yOffset) + deltaY;
+            // Make sure to update coordinates with floats, not strings
+            if (draggedEdge === 'start') {
+                selectedLabel.xMin = parseFloat(selectedLabel.xMin) + deltaX;
+                selectedLabel.yMin = parseFloat(selectedLabel.yMin) + deltaY;
+            } else if (draggedEdge === 'end') {
+                selectedLabel.xMax = parseFloat(selectedLabel.xMax) + deltaX;
+                selectedLabel.yMax = parseFloat(selectedLabel.yMax) + deltaY;
+            }
+
+            // Prevent potential concatenation of values
+            selectedLabel.xMin = parseFloat(selectedLabel.xMin);
+            selectedLabel.xMax = parseFloat(selectedLabel.xMax);
+            selectedLabel.yMin = parseFloat(selectedLabel.yMin);
+            selectedLabel.yMax = parseFloat(selectedLabel.yMax);
 
             dragStartX = mouseX;
             dragStartY = mouseY;
 
-            resizeCanvas(); // Redraw canvas with updated label position
+            resizeCanvas();  // Redraw canvas with updated arrow position
         }
     });
-
+	
     c.addEventListener('mouseup', (event) => {
         if (isDraggingLabel && selectedLabel) {
             isDraggingLabel = false;
@@ -701,8 +757,49 @@ function addCanvasEventListeners() {
         }
     });
 
-    window.addEventListener('resize', setCanvasDimensions);
+
+    // Add mousedown listener for edge dragging
+    c.addEventListener('mousedown', (event) => {
+        const canvasBounds = c.getBoundingClientRect();
+        const mouseX = event.clientX - canvasBounds.left;
+        const mouseY = event.clientY - canvasBounds.top;
+
+        labels.forEach(label => {
+            const edge = isNearEdge(label, mouseX, mouseY, scale, offsetX, offsetY);
+            if (edge) {
+                selectedLabel = label;
+                isDraggingEdge = true;
+                draggedEdge = edge;
+                dragStartX = mouseX;
+                dragStartY = mouseY;
+            }
+        });
+    });
+
+    // Add mouseup listener to stop edge dragging
+    c.addEventListener('mouseup', () => {
+        if (isDraggingEdge && selectedLabel) {
+            isDraggingEdge = false;
+            draggedEdge = null;
+
+            // Save the updated coordinates after dragging
+            fetch(`/label/${selectedLabel.id}?xMin=${selectedLabel.xMin}&xMax=${selectedLabel.xMax}&yMin=${selectedLabel.yMin}&yMax=${selectedLabel.yMax}`)
+                .then(response => response.text())
+                .then(data => console.log("Bounding box/arrow coordinates updated:", data))
+                .catch(error => console.error("Error updating coordinates:", error));
+
+            selectedLabel = null;
+            suppressClick = true;  // Suppress click after dragging
+            resizeCanvas();  // Redraw the canvas
+        }
+    });
 }
+
+    // Add window resize listener
+window.addEventListener('resize', () => {
+    setCanvasDimensions();  // Redraw canvas when screen size changes
+    resizeCanvas();         // Ensure all elements resize correctly
+});
 
 // Function to create a new label and attach it to the labels array
 function createNewLabel(labelData) {
@@ -767,10 +864,10 @@ function resizeCanvas() {
         // Draw the image on the canvas
         ctx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
 
-        // Redraw labels (boxes/arrows) on top of the image
-        labels.forEach(function(label) {
-            drawLabels(ctx, label, scale, offsetX, offsetY);
-        });
+		// Redraw all labels
+		labels.forEach(label => {
+			drawLabels(ctx, label, scale, offsetX, offsetY);
+		});
     } else {
         console.error("Image not loaded yet.");
     }
@@ -932,6 +1029,102 @@ function getAdjustedCoordinates(e) {
 
     return { x, y };
 }
+
+// new function to drag coordinates... Define the "Clickable" Areas for Bounding Boxes and Arrows
+const EDGE_THRESHOLD = 10;  // The area within which the edge is draggable
+let isDraggingEdge = false;
+let draggedEdge = null;  // Keeps track of which corner/edge is being dragged
+
+// Function to check if the mouse is near a corner or arrow endpoint
+function isNearEdge(label, x, y, scale, offsetX, offsetY) {
+    const xMin = (label.xMin * scale) + offsetX;
+    const xMax = (label.xMax * scale) + offsetX;
+    const yMin = (label.yMin * scale) + offsetY;
+    const yMax = (label.yMax * scale) + offsetY;
+
+    // Check if the mouse is near any of the corners of the bounding box
+    if (label.type === 'box') {
+        if (Math.abs(x - xMin) < EDGE_THRESHOLD && Math.abs(y - yMin) < EDGE_THRESHOLD) return 'top-left';
+        if (Math.abs(x - xMax) < EDGE_THRESHOLD && Math.abs(y - yMin) < EDGE_THRESHOLD) return 'top-right';
+        if (Math.abs(x - xMin) < EDGE_THRESHOLD && Math.abs(y - yMax) < EDGE_THRESHOLD) return 'bottom-left';
+        if (Math.abs(x - xMax) < EDGE_THRESHOLD && Math.abs(y - yMax) < EDGE_THRESHOLD) return 'bottom-right';
+    }
+
+    // Check if the mouse is near the ends of an arrow
+    if (label.type === 'arrow') {
+        const arrowStart = Math.abs(x - xMin) < EDGE_THRESHOLD && Math.abs(y - yMin) < EDGE_THRESHOLD;
+        const arrowEnd = Math.abs(x - xMax) < EDGE_THRESHOLD && Math.abs(y - yMax) < EDGE_THRESHOLD;
+        if (arrowStart) return 'start';
+        if (arrowEnd) return 'end';
+    }
+
+    return null;
+}
+
+c.addEventListener('mousemove', (event) => {
+    const canvasBounds = c.getBoundingClientRect();
+    const mouseX = event.clientX - canvasBounds.left;
+    const mouseY = event.clientY - canvasBounds.top;
+
+    let hoveringOverEdge = false;
+    let edgeType = null;
+
+    // Check if the mouse is hovering over any edges/corners of a label
+    labels.forEach(label => {
+        const edge = isNearEdge(label, mouseX, mouseY, scale, offsetX, offsetY);
+        if (edge) {
+            hoveringOverEdge = true;
+            edgeType = edge;
+        }
+    });
+
+    // Change cursor style if hovering over a corner or arrow endpoint
+    if (hoveringOverEdge) {
+        if (edgeType.includes('top') || edgeType.includes('bottom')) {
+            c.style.cursor = 'nwse-resize';  // Example for corner edges
+        } else if (edgeType === 'start' || edgeType === 'end') {
+            c.style.cursor = 'crosshair';  // Example for arrow endpoints
+        }
+    } else {
+        c.style.cursor = 'crosshair';  // Default cursor
+    }
+
+    // Handle dragging edges if necessary
+    if (isDraggingEdge && draggedEdge) {
+        const deltaX = (mouseX - dragStartX) / scale;
+        const deltaY = (mouseY - dragStartY) / scale;
+
+        if (draggedEdge === 'top-left') {
+            selectedLabel.xMin += deltaX;
+            selectedLabel.yMin += deltaY;
+        } else if (draggedEdge === 'top-right') {
+            selectedLabel.xMax += deltaX;
+            selectedLabel.yMin += deltaY;
+        } else if (draggedEdge === 'bottom-left') {
+            selectedLabel.xMin += deltaX;
+            selectedLabel.yMax += deltaY;
+        } else if (draggedEdge === 'bottom-right') {
+            selectedLabel.xMax += deltaX;
+            selectedLabel.yMax += deltaY;
+        } else if (draggedEdge === 'start') {
+            selectedLabel.xMin += deltaX;
+            selectedLabel.yMin += deltaY;
+        } else if (draggedEdge === 'end') {
+            selectedLabel.xMax += deltaX;
+            selectedLabel.yMax += deltaY;
+        }
+
+        dragStartX = mouseX;
+        dragStartY = mouseY;
+
+        resizeCanvas();  // Redraw canvas with updated bounding box or arrow position
+    }
+});
+
+
+
+
+
 
 c.onclick = function(e) {
     // If suppressClick is true, reset it and return to avoid creating a new label
@@ -1151,7 +1344,7 @@ function loadArrowHeadSize() {
         document.getElementById("arrowHeadSizeInput").value = arrowHeadSize;
         document.getElementById("arrowHeadSizeSlider").value = arrowHeadSize;
     } else {
-        arrowHeadSize = 45; // Default value
+        arrowHeadSize = 4.5; // Default value
     }
 }
 
@@ -1171,7 +1364,7 @@ function resetPredefinedLabelsToDefault() {
     document.getElementById("labelFontSizeInput").value = labelFontSizePercentage;
 	
     // Reset arrow head size to default
-    arrowHeadSize = 45;
+    arrowHeadSize = 4,5;
     document.getElementById("arrowHeadSizeInput").value = arrowHeadSize;
 
     // Reset label offsets to default

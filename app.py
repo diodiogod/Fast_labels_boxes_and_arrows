@@ -118,11 +118,16 @@ def label(id):
     color = request.args.get("color")
     xOffset = request.args.get("xOffset")
     yOffset = request.args.get("yOffset")
+    xMin = request.args.get("xMin")
+    xMax = request.args.get("xMax")
+    yMin = request.args.get("yMin")
+    yMax = request.args.get("yMax")
 
-    print(f"Received label update: name={name}, color={color}, xOffset={xOffset}, yOffset={yOffset}")
+    print(f"Received label update: name={name}, color={color}, xOffset={xOffset}, yOffset={yOffset}, xMin={xMin}, xMax={xMax}, yMin={yMin}, yMax={yMax}")
 
     label = app.config["LABELS"][int(id) - 1]
 
+    # Update label attributes
     if color:
         label["color"] = color
     if name:
@@ -131,6 +136,14 @@ def label(id):
         label["xOffset"] = float(xOffset)
     if yOffset:
         label["yOffset"] = float(yOffset)
+    if xMin:
+        label["xMin"] = float(xMin)
+    if xMax:
+        label["xMax"] = float(xMax)
+    if yMin:
+        label["yMin"] = float(yMin)
+    if yMax:
+        label["yMax"] = float(yMax)
 
     return redirect(url_for('tagger'))
 
