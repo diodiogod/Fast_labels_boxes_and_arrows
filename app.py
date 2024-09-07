@@ -56,10 +56,10 @@ def download_csv():
     image = app.config["FILES"][app.config["HEAD"]]
     labels = app.config["LABELS"]
     
-    # Generate CSV content
-    csv_content = "image,id,name,xMin,xMax,yMin,yMax,color,type\n"
+    # Generate CSV content with the new fields
+    csv_content = "image,id,name,xMin,xMax,yMin,yMax,color,type,xOffset,yOffset\n"  # Add new fields to the header
     for label in labels:
-        csv_content += f"{image},{label['id']},{label['name']},{label['xMin']},{label['xMax']},{label['yMin']},{label['yMax']},{label['color']},{label['type']}\n"
+        csv_content += f"{image},{label['id']},{label['name']},{label['xMin']},{label['xMax']},{label['yMin']},{label['yMax']},{label['color']},{label['type']},{label.get('xOffset', 0)},{label.get('yOffset', 0)}\n"
     
     # Create a response object to serve the CSV file
     response = make_response(csv_content)
@@ -80,9 +80,11 @@ def add(id):
     color = request.args.get("color", "#000000")
     name = request.args.get("name", "Unnamed")
     type = request.args.get("type", "box")
+    xOffset = request.args.get("xOffset", 0)
+    yOffset = request.args.get("yOffset", 0)
 
     # Log the new label being added
-    print(f"Adding new label with ID: {id}, Name: {name}, Type: {type}, Coords: ({xMin},{yMin}) to ({xMax},{yMax}), Color: {color}")
+    print(f"Adding new label with ID: {id}, Name: {name}, Type: {type}, Coords: ({xMin},{yMin}) to ({xMax},{yMax}), Color: {color}, xOffset: {xOffset}, yOffset: {yOffset}")
 
     app.config["LABELS"].append({
         "id": id,
@@ -92,7 +94,9 @@ def add(id):
         "yMin": yMin,
         "yMax": yMax,
         "color": color,
-        "type": type
+        "type": type,
+        "xOffset": xOffset,
+        "yOffset": yOffset
     })
     
     return redirect(url_for('tagger'))
@@ -112,13 +116,23 @@ def remove(id):
 def label(id):
     name = request.args.get("name")
     color = request.args.get("color")
-    print(f"Received name: {name}, color: {color}")  # Debugging
-    if color:
-        app.config["LABELS"][int(id) - 1]["color"] = color
-    if name:  # Update the name only if it is provided
-        app.config["LABELS"][int(id) - 1]["name"] = name
-    return redirect(url_for('tagger'))
+    xOffset = request.args.get("xOffset")
+    yOffset = request.args.get("yOffset")
 
+    print(f"Received label update: name={name}, color={color}, xOffset={xOffset}, yOffset={yOffset}")
+
+    label = app.config["LABELS"][int(id) - 1]
+
+    if color:
+        label["color"] = color
+    if name:
+        label["name"] = name
+    if xOffset:
+        label["xOffset"] = float(xOffset)
+    if yOffset:
+        label["yOffset"] = float(yOffset)
+
+    return redirect(url_for('tagger'))
 
 @app.route('/image/<f>')
 def images(f):
@@ -130,12 +144,6 @@ def update_csv():
     image = app.config["FILES"][app.config["HEAD"]]
     print(f"Updating CSV for image: {image}")  # Log the image being updated
     
-    # Check if there are any labels to update
-    if not app.config["LABELS"]:
-        print(f"No labels found for image: {image}. Nothing will be written to the CSV.")
-        return
-    
-    # Read existing data
     rows = []
     try:
         with open(app.config["OUT"], 'r') as f:
@@ -158,14 +166,16 @@ def update_csv():
             'yMin': label['yMin'],
             'yMax': label['yMax'],
             'color': label['color'],
-            'type': label.get('type', 'box')
+            'type': label.get('type', 'box'),
+            'xOffset': label.get('xOffset', 0),  # New field, default to 0 if not found
+            'yOffset': label.get('yOffset', 0)   # New field, default to 0 if not found
         }
         rows.append(row)
         print(f"Writing row to CSV: {row}")  # Log each row being written
     
     # Write all rows back to the CSV
     with open(app.config["OUT"], 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=["image", "id", "name", "xMin", "xMax", "yMin", "yMax", "color", "type"])
+        writer = csv.DictWriter(f, fieldnames=["image", "id", "name", "xMin", "xMax", "yMin", "yMax", "color", "type", "xOffset", "yOffset"])
         writer.writeheader()
         writer.writerows(rows)
     print(f"CSV update complete for image: {image}\n")  # Log completion of CSV update
@@ -173,11 +183,12 @@ def update_csv():
 def load_labels_for_image():
     """Load the labels from the CSV file for the current image."""
     image = app.config["FILES"][app.config["HEAD"]]
-    app.config["LABELS"] = []
+    app.config["LABELS"] = []  # Clear current labels
     try:
         with open(app.config["OUT"], 'r') as f:
             reader = csv.DictReader(f)
             for row in reader:
+                # If the row corresponds to the current image, load the label
                 if row['image'] == image:
                     app.config["LABELS"].append({
                         'id': row['id'],
@@ -187,7 +198,9 @@ def load_labels_for_image():
                         'yMin': row['yMin'],
                         'yMax': row['yMax'],
                         'color': row['color'],
-                        'type': row.get('type', 'box')  # Default to 'box' if type is missing
+                        'type': row.get('type', 'box'),  # Default to 'box' if type is missing
+                        'xOffset': row.get('xOffset', 0),  # New field, default to 0 if not found
+                        'yOffset': row.get('yOffset', 0)   # New field, default to 0 if not found
                     })
     except FileNotFoundError:
         pass  # If the CSV file doesn't exist, simply do nothing
@@ -210,7 +223,9 @@ def load_all_labels():
                     'yMin': row['yMin'],
                     'yMax': row['yMax'],
                     'color': row['color'],
-                    'type': row.get('type', 'box')  # Default to 'box' if type is missing
+                    'type': row.get('type', 'box'),  # Default to 'box' if type is missing
+                    'xOffset': row.get('xOffset', 0),  # New field, default to 0 if not found
+                    'yOffset': row.get('yOffset', 0)   # New field, default to 0 if not found
                 })
     except FileNotFoundError:
         pass  # If the CSV file doesn't exist, return an empty dictionary
@@ -250,7 +265,7 @@ if __name__ == "__main__":
     else:
         # If the CSV doesn't exist, create a new one with the header
         with open(app.config["OUT"], 'w', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=["image", "id", "name", "xMin", "xMax", "yMin", "yMax", "color", "type"])
+            writer = csv.DictWriter(f, fieldnames=["image", "id", "name", "xMin", "xMax", "yMin", "yMax", "color", "type", "xOffset", "yOffset"])
             writer.writeheader()
 
     load_labels_for_image()  # Load labels for the first image (if available)

@@ -439,7 +439,9 @@ document.getElementById("arrowHeadTypeSelect").addEventListener("change", functi
 
 // Function to draw labels (both boxes and arrows)
 function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
-    const { name, xMin, xMax, yMin, yMax, color, type } = label;
+    const { name, xMin, xMax, yMin, yMax, color, type, xOffset = 0, yOffset = 0 } = label;
+    
+    // Set label styles
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = ((lineWidth / 100) * originalWidth) * scale;
@@ -447,15 +449,27 @@ function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
     if (type === 'box') {
         // Draw a rectangle (bounding box)
         ctx.beginPath();
-        ctx.rect(xMin * scale + offsetX, yMin * scale + offsetY, (xMax - xMin) * scale, (yMax - yMin) * scale);
+        ctx.rect(
+            (xMin * scale) + offsetX,
+            (yMin * scale) + offsetY,
+            (xMax - xMin) * scale,
+            (yMax - yMin) * scale
+        );
         ctx.stroke();
     } else if (type === 'arrow') {
         // Draw the line of the arrow
+        // Adjust arrow drawing with scale and offset
         ctx.beginPath();
-        ctx.moveTo(xMin * scale + offsetX, yMin * scale + offsetY);
-        ctx.lineTo(xMax * scale + offsetX, yMax * scale + offsetY);
+        ctx.moveTo(
+            (xMin * scale) + offsetX,
+            (yMin * scale) + offsetY
+        );
+        ctx.lineTo(
+            (xMax * scale) + offsetX,
+            (yMax * scale) + offsetY
+        );
         ctx.stroke();
-
+        
         // Calculate the arrowhead
         const headlen = ((arrowHeadSize / 100) * originalWidth) * scale; // Scale the arrowhead size
         const angle = Math.atan2(yMax - yMin, xMax - xMin);
@@ -495,16 +509,16 @@ function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
     // Set font size proportional to the image width
     const fontSize = (labelFontSizePercentage / 100) * originalWidth;
     ctx.font = `${fontSize * scale}px ${labelFont}`;
-
+    
     // Scale the offsets based on the original image width
-    const scaledLabelOffsetX = (labelOffsetX / 1000) * originalWidth * scale;
-    const scaledLabelOffsetY = (labelOffsetY / 1000) * originalHeight * scale;
+    const finalOffsetX = (labelOffsetX / 1000) * originalWidth * scale + (xOffset * scale);
+    const finalOffsetY = (labelOffsetY / 1000) * originalHeight * scale + (yOffset * scale);
 
     // Apply scaled offsets to the label text position
     ctx.fillText(
         name,
-        (xMin * scale) + offsetX + scaledLabelOffsetX,
-        (yMin * scale) + offsetY + scaledLabelOffsetY
+        (xMin * scale) + offsetX + finalOffsetX,  // Apply the combined x offsets
+        (yMin * scale) + offsetY + finalOffsetY   // Apply the combined y offsets
     );
 }
 
@@ -597,6 +611,137 @@ function setCanvasDimensions() {
     // Redraw canvas content after resizing
     resizeCanvas();
 }
+
+// Add mouse event listeners to the canvas (after canvas is defined)
+let selectedLabel = null;
+let isDraggingLabel = false; // Differentiate from general dragging
+let dragStartX = 0;
+let dragStartY = 0;
+let suppressClick = false;  // Flag to suppress clicks after dragging
+
+const DRAG_THRESHOLD = 5; // Threshold in pixels
+
+// Function to detect if a label is clicked
+function isLabelClicked(label, x, y, scale, offsetX, offsetY) {
+    const fontSize = (labelFontSizePercentage / 100) * originalWidth * scale;
+    const labelX = (label.xMin * scale) + offsetX + (label.xOffset * scale);
+    const labelY = (label.yMin * scale) + offsetY + (label.yOffset * scale);
+
+    // Check if the click is within the label area (adjust based on font size)
+    return (x >= labelX && x <= labelX + fontSize * 5) && (y >= labelY - fontSize && y <= labelY);
+}
+
+// Function to add event listeners to handle mouse interactions on the canvas
+function addCanvasEventListeners() {
+    c.addEventListener('mousedown', (event) => {
+        const canvasBounds = c.getBoundingClientRect();
+        const mouseX = event.clientX - canvasBounds.left;
+        const mouseY = event.clientY - canvasBounds.top;
+
+        labels.forEach(label => {
+            if (isLabelClicked(label, mouseX, mouseY, scale, offsetX, offsetY)) {
+                selectedLabel = label;
+                isDraggingLabel = true;
+                dragStartX = mouseX;
+                dragStartY = mouseY;
+            }
+        });
+    });
+
+    c.addEventListener('mousemove', (event) => {
+        const canvasBounds = c.getBoundingClientRect();
+        const mouseX = event.clientX - canvasBounds.left;
+        const mouseY = event.clientY - canvasBounds.top;
+
+        let hoveringOverLabel = false;
+
+        // Check if the mouse is hovering over any label
+        labels.forEach(label => {
+            if (isLabelClicked(label, mouseX, mouseY, scale, offsetX, offsetY)) {
+                hoveringOverLabel = true;
+            }
+        });
+
+        // Change cursor style if hovering over a label
+        if (hoveringOverLabel) {
+            c.style.cursor = 'pointer';
+        } else {
+            c.style.cursor = 'crosshair';
+        }
+
+        // Handle dragging logic
+        if (isDraggingLabel && selectedLabel) {
+            const deltaX = (mouseX - dragStartX) / scale;
+            const deltaY = (mouseY - dragStartY) / scale;
+
+            // Ensure offsets are treated as numbers during dragging
+            selectedLabel.xOffset = parseFloat(selectedLabel.xOffset) + deltaX;
+            selectedLabel.yOffset = parseFloat(selectedLabel.yOffset) + deltaY;
+
+            dragStartX = mouseX;
+            dragStartY = mouseY;
+
+            resizeCanvas(); // Redraw canvas with updated label position
+        }
+    });
+
+    c.addEventListener('mouseup', (event) => {
+        if (isDraggingLabel && selectedLabel) {
+            isDraggingLabel = false;
+
+            // Save updated label offsets to the server
+            fetch(`/label/${selectedLabel.id}?xOffset=${selectedLabel.xOffset}&yOffset=${selectedLabel.yOffset}`)
+                .then(response => response.text())
+                .then(data => console.log("Label offsets updated:", data))
+                .catch(error => console.error("Error updating label offsets:", error));
+
+            selectedLabel = null;
+            suppressClick = true;  // Suppress click after dragging
+            resizeCanvas();  // Redraw with the updated offsets
+        }
+    });
+
+    window.addEventListener('resize', setCanvasDimensions);
+}
+
+// Function to create a new label and attach it to the labels array
+function createNewLabel(labelData) {
+    labels.push(labelData); // Add the new label to the array
+
+    // Draw the new label immediately
+    drawLabels(ctx, labelData, scale, offsetX, offsetY);
+
+    // Redraw canvas to ensure everything is updated
+    resizeCanvas();
+
+    // Ensure the label is draggable immediately after creation
+    suppressClick = true; // Prevent the label from being created twice due to mouse events
+}
+
+// Ensure the canvas event listeners are attached after the DOM loads
+document.addEventListener('DOMContentLoaded', () => {
+    addCanvasEventListeners();  // Attach all necessary event listeners
+});
+
+// Example label creation function
+function createLabel(xMin, yMin, xMax, yMax, color, name) {
+    const newLabel = {
+        id: (labels.length + 1).toString(),
+        name: name,
+        xMin: xMin,
+        yMin: yMin,
+        xMax: xMax,
+        yMax: yMax,
+        color: color,
+        xOffset: 0,
+        yOffset: 0,
+        type: 'box'  // Example type
+    };
+
+    // Create the label and make it draggable immediately
+    createNewLabel(newLabel);
+}
+
 
 
 window.addEventListener('resize', setCanvasDimensions);
@@ -789,6 +934,12 @@ function getAdjustedCoordinates(e) {
 }
 
 c.onclick = function(e) {
+    // If suppressClick is true, reset it and return to avoid creating a new label
+    if (suppressClick) {
+        suppressClick = false;
+        return;
+    }
+	
     const { x, y } = getAdjustedCoordinates(e);
 
     // Check if the click is inside the image boundaries
@@ -829,7 +980,9 @@ c.onclick = function(e) {
                 yMin: yMin,
                 yMax: yMax,
                 color: predefinedLabel.color,
-                type: labelType
+                type: labelType,
+                xOffset: 0,  // Initialize offsets
+                yOffset: 0
             };
         } else if (labelMode === 'arrow') {
             labelData = {
@@ -840,11 +993,14 @@ c.onclick = function(e) {
                 xMax: x,         // End of the arrow
                 yMax: y,
                 color: predefinedLabel.color,
-                type: labelType
+                type: labelType,
+                xOffset: 0,  // Initialize offsets
+                yOffset: 0
             };
         }
 
         labels.push(labelData);
+
 
         // Log the label data before sending
         //console.log("Sending label data to server: ", labelData);
@@ -853,6 +1009,10 @@ c.onclick = function(e) {
 		
         // Draw the label immediately using the updated drawLabels function
         drawLabels(ctx, labelData, scale, offsetX, offsetY);
+
+        // Redraw canvas to ensure everything is updated
+        resizeCanvas();
+	
 
         // Send the label data to the server
         fetch(`/add/${labelData.id}?xMin=${labelData.xMin}&xMax=${labelData.xMax}&yMin=${labelData.yMin}&yMax=${labelData.yMax}&color=${encodeURIComponent(labelData.color)}&name=${encodeURIComponent(labelData.name)}&type=${labelData.type}`)
@@ -866,7 +1026,6 @@ c.onclick = function(e) {
             .catch(error => console.error('Error adding label:', error));
 
         fPoint = {};  // Clear after use
-        resizeCanvas();
         updateLabelList();
     }
     clicked = !clicked;
