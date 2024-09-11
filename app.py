@@ -2,7 +2,7 @@ import sys
 from os import walk, path
 import csv
 import argparse
-from flask import Flask, redirect, url_for, request, render_template, send_file, make_response
+from flask import Flask, redirect, url_for, request, render_template, send_file, make_response, jsonify
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -23,11 +23,43 @@ def tagger():
     directory = app.config['IMAGES']
     image = app.config["FILES"][app.config["HEAD"]]
     labels = app.config["LABELS"]
-    
+
+    # Ensure 'files' is passed to the template
+    files = app.config["FILES"]
+
     not_end = not(app.config["HEAD"] == len(app.config["FILES"]) - 1)
     not_start = app.config["HEAD"] > 0
     
-    return render_template('tagger.html', not_end=not_end, not_start=not_start, directory=directory, image=image, labels=labels, head=app.config["HEAD"] + 1, len=len(app.config["FILES"]))
+    return render_template('tagger.html', not_end=not_end, not_start=not_start, directory=directory, image=image, labels=labels, files=files, head=app.config["HEAD"] + 1, len=len(app.config["FILES"]))
+
+@app.route("/labels/<image_name>")
+def get_labels_for_image(image_name):
+    labels = []
+    try:
+        with open(app.config["OUT"], 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row['image'] == image_name:
+                    labels.append({
+                        'id': row['id'],
+                        'name': row['name'],
+                        'xMin': row['xMin'],
+                        'xMax': row['xMax'],
+                        'yMin': row['yMin'],
+                        'yMax': row['yMax'],
+                        'color': row['color'],
+                        'type': row.get('type', 'box'),
+                        'xOffset': row.get('xOffset', 0),
+                        'yOffset': row.get('yOffset', 0)
+                    })
+    except FileNotFoundError:
+        print(f"No labels found for image: {image_name}")
+        return jsonify({"error": "File not found"}), 404
+    except Exception as e:
+        print(f"Error loading labels for image {image_name}: {e}")
+        return jsonify({"error": str(e)}), 500
+    
+    return jsonify(labels)
 
 @app.route('/previous')
 def previous_image():

@@ -243,11 +243,20 @@
     <div class="right-buttons">
         <button id="resetButton" class="btn btn-primary">Reset to 100%</button>
         <button id="downloadButton" class="btn btn-success" style="margin-left: 10px;">Download Image</button>
+        <button id="downloadAllImagesButton" class="btn btn-success" style="margin-left: 1px;">All</button>
         <button id="saveCsvButton" class="btn btn-warning" style="margin-left: 10px;">Save CSV</button>
     </div>
+    
 </div>
 
 <script>
+console.log("JavaScript is running");  // This should appear when the page loads
+
+document.getElementById('downloadAllImagesButton').addEventListener('click', function() {
+    console.log("Download button clicked");  // Verify if this works
+    // Rest of your code...
+});
+
 var labels = {{ labels|tojson|safe }};
 var c = document.getElementById("canvas");
 var ctx = c.getContext("2d");
@@ -438,13 +447,14 @@ document.getElementById("arrowHeadTypeSelect").addEventListener("change", functi
 });
 
 // Function to draw labels (both boxes and arrows)
-function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
+function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0, imageWidth = originalWidth, imageHeight = originalHeight) {
     const { name, xMin, xMax, yMin, yMax, color, type, xOffset = 0, yOffset = 0 } = label;
-    
+
     // Set label styles
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = ((lineWidth / 100) * originalWidth) * scale;
+    // Use either the passed imageWidth/imageHeight or default to originalWidth/originalHeight
+    ctx.lineWidth = ((lineWidth / 100) * imageWidth) * scale;
 
     if (type === 'box') {
         // Draw a rectangle (bounding box)
@@ -471,7 +481,7 @@ function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
         ctx.stroke();
         
         // Calculate the arrowhead
-        const headlen = ((arrowHeadSize / 100) * originalWidth) * scale; // Scale the arrowhead size
+        const headlen = ((arrowHeadSize / 100) * imageWidth) * scale; // Scale the arrowhead size
         const angle = Math.atan2(yMax - yMin, xMax - xMin);
 
         if (arrowHeadType === 'standard') {
@@ -507,12 +517,12 @@ function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
     }
 
     // Set font size proportional to the image width
-    const fontSize = (labelFontSizePercentage / 100) * originalWidth;
+    const fontSize = (labelFontSizePercentage / 100) * imageWidth;  // Use image width
     ctx.font = `${fontSize * scale}px ${labelFont}`;
     
     // Scale the offsets based on the original image width
-    const finalOffsetX = (labelOffsetX / 1000) * originalWidth * scale + (xOffset * scale);
-    const finalOffsetY = (labelOffsetY / 1000) * originalHeight * scale + (yOffset * scale);
+    const finalOffsetX = (labelOffsetX / 1000) * imageWidth * scale + (xOffset * scale);
+    const finalOffsetY = (labelOffsetY / 1000) * imageHeight * scale + (yOffset * scale);
 
     // Apply scaled offsets to the label text position
     ctx.fillText(
@@ -521,7 +531,6 @@ function drawLabels(ctx, label, scale = 1, offsetX = 0, offsetY = 0) {
         (yMin * scale) + offsetY + finalOffsetY   // Apply the combined y offsets
     );
 }
-
 
 // Function to initialize the predefined labels panel
 function initPredefinedLabels() {
@@ -976,6 +985,139 @@ document.getElementById('downloadButton').addEventListener('click', function() {
     link.href = downloadCanvas.toDataURL('image/png');
     link.click();
 });
+
+document.getElementById('downloadAllImagesButton').addEventListener('click', function() {
+    var zip = new JSZip();  // Initialize JSZip
+    var imageCounter = 0;  // Counter to track processed images
+    var validImageCount = 0;  // To track valid images for downloading
+
+    console.log("Download button clicked");  // Log button click
+
+    var userConfirmed = confirm("This will download all images with annotations. It might take some time. Do you want to continue?");
+    
+    if (!userConfirmed) {
+        console.log("User canceled download");
+        return;  // Exit if the user cancels
+    }
+
+    // Check if there are images to download
+    if (allImages.length === 0) {
+        console.error("No images found for download");
+        return;
+    }
+
+    // Calculate the number of valid images
+    validImageCount = allImages.filter(imageFileName => imageFileName.match(/\.(jpg|jpeg|png|gif)$/i)).length;
+    console.log("Valid images to process: " + validImageCount);
+
+    // Process each image
+    allImages.forEach(function(imageFileName) {
+        if (!imageFileName.match(/\.(jpg|jpeg|png|gif)$/i)) {
+            console.log(`Skipping non-image file: ${imageFileName}`);
+            return;  // Skip non-image files
+        }
+
+        console.log(`Processing image: ${imageFileName}`);
+        
+        // Load the image and annotations
+        loadImageAndAnnotations(imageFileName, function(image, labels) {
+            if (!image.complete || image.naturalWidth === 0) {
+                console.error(`Failed to load image: ${imageFileName}`);
+                return;
+            }
+
+            console.log(`Image loaded successfully: ${imageFileName}`);
+
+            // Create a canvas for the current image
+            var downloadCanvas = document.createElement('canvas');
+            var downloadCtx = downloadCanvas.getContext('2d');
+
+            // Set canvas dimensions based on the current image's natural size
+            downloadCanvas.width = image.naturalWidth;
+            downloadCanvas.height = image.naturalHeight;
+
+            // Draw the image on the canvas
+            downloadCtx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight);
+
+            // Draw labels for the image, scaled properly based on its own dimensions
+            if (labels.length > 0) {
+                labels.forEach(function(label) {
+                    console.log(`Drawing label for image: ${imageFileName}`);
+                    // Pass the natural width and height of the current image to ensure correct scaling
+                    drawLabels(downloadCtx, label, 1, 0, 0, image.naturalWidth, image.naturalHeight);
+                });
+            } else {
+                console.log(`No labels for image: ${imageFileName}`);
+            }
+
+            // Convert the canvas to PNG format and add it to the ZIP
+            var imgData = downloadCanvas.toDataURL('image/png');
+            var base64Data = imgData.split(',')[1];  // Strip out the data type part
+            zip.file(imageFileName.replace(/\.[^/.]+$/, "_annotated.png"), base64Data, {base64: true});
+
+            // Track the number of images processed
+            imageCounter++;
+            console.log(`Image added to zip: ${imageFileName}, Counter: ${imageCounter}`);
+
+            // Once all images are processed, generate the ZIP file
+            if (imageCounter === validImageCount) {
+                console.log("All valid images processed, generating zip file");
+                zip.generateAsync({type: "blob"})
+                    .then(function(content) {
+                        console.log("Zip file generated successfully");
+
+                        // Create a downloadable link for the ZIP file
+                        var blobURL = URL.createObjectURL(content);
+                        var link = document.createElement('a');
+                        link.href = blobURL;
+                        link.download = 'all_annotated_images.zip';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    })
+                    .catch(function(error) {
+                        console.error("Error generating zip file: ", error);
+                    });
+            }
+        });
+    });
+});
+
+
+
+function loadImageAndAnnotations(imageFileName, callback) {
+    console.log(`Loading image: ${imageFileName}`);
+
+    var img = new Image();
+    img.src = "/image/" + imageFileName;
+
+    img.onload = function() {
+        console.log(`Image loaded: ${imageFileName}`);
+
+        // Fetch labels for the current image
+        fetch(`/labels/${encodeURIComponent(imageFileName)}`)
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    console.warn(`No labels found for image: ${imageFileName}`);
+                    return [];  // If no labels found, return an empty array
+                }
+            })
+            .then(labels => {
+                // Execute the callback with the loaded image and its labels
+                callback(img, labels);
+            })
+            .catch(error => {
+                console.error(`Error fetching labels for image: ${imageFileName}`, error);
+                callback(img, []);  // In case of error, pass an empty label list
+            });
+    };
+
+    img.onerror = function() {
+        console.error(`Error loading image: ${imageFileName}`);
+    };
+}
 
 function addWheelEventListener(element) {
     element.addEventListener('wheel', function(event) {
@@ -1486,6 +1628,7 @@ document.getElementById("arrowHeadSizeInput").addEventListener("input", function
     resizeCanvas();  // Redraw the canvas with the new arrow size
 });
 
+
 </script>
 
 <!-- Include jQuery -->
@@ -1493,6 +1636,12 @@ document.getElementById("arrowHeadSizeInput").addEventListener("input", function
 
 <!-- Include Bootstrap's JavaScript -->
 <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+
+<script>
+    var allImages = {{ files|tojson }};
+</script>
 
 </body>
 </html>
