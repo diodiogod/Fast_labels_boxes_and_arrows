@@ -893,6 +893,7 @@ document.addEventListener('DOMContentLoaded', () => {
     addCanvasEventListeners();  // Attach all necessary event listeners
 });
 
+
 // Example label creation function
 function createLabel(xMin, yMin, xMax, yMax, color, name) {
     const newLabel = {
@@ -975,9 +976,11 @@ function ensureParentDimensions() {
 // Dragging logic
 var isDragging = false;
 var lastX, lastY;
+var isSpacebarDragging = false;  // Track spacebar dragging
 
+// Middle-click or spacebar drag start
 c.addEventListener('mousedown', function(e) {
-    if (e.button === 1) { // 1 is the middle mouse button
+    if (e.button === 1) {  // Middle mouse button
         isDragging = true;
         lastX = e.clientX;
         lastY = e.clientY;
@@ -985,8 +988,34 @@ c.addEventListener('mousedown', function(e) {
     }
 });
 
+// Spacebar press event
+document.addEventListener('keydown', function(event) {
+    if (event.code === 'Space' && !isSpacebarDragging) {
+        event.preventDefault();  // Prevent default spacebar behavior
+        isSpacebarDragging = true;
+        lastX = undefined;  // Reset starting coordinates for spacebar dragging
+        lastY = undefined;
+        c.style.cursor = 'grabbing';  // Change cursor to grabbing style
+    }
+});
+
+// Spacebar release event
+document.addEventListener('keyup', function(event) {
+    if (event.code === 'Space') {
+        isSpacebarDragging = false;  // Stop spacebar dragging
+        c.style.cursor = 'default';  // Reset cursor to default
+    }
+});
+
+// Dragging the image with spacebar or middle-click
 c.addEventListener('mousemove', function(e) {
-    if (isDragging) {
+    if (isDragging || isSpacebarDragging) {
+        // Initialize lastX and lastY on first move after pressing spacebar
+        if (lastX === undefined || lastY === undefined) {
+            lastX = e.clientX;
+            lastY = e.clientY;
+        }
+
         var dx = e.clientX - lastX;
         var dy = e.clientY - lastY;
 
@@ -1003,12 +1032,23 @@ c.addEventListener('mousemove', function(e) {
     }
 });
 
+
+// Stop dragging on mouseup for middle-click
 c.addEventListener('mouseup', function(e) {
     if (e.button === 1) {
         isDragging = false;
+        c.style.cursor = isSpacebarDragging ? 'grabbing' : 'default';  // Reset cursor based on spacebar state
         e.preventDefault();
     }
 });
+
+// Stop dragging if the mouse leaves the canvas
+c.addEventListener('mouseleave', function() {
+    isDragging = false;
+    isSpacebarDragging = false;  // Stop spacebar dragging when mouse leaves
+    c.style.cursor = 'default';  // Reset cursor to default
+});
+
 
 function updateDebugInfo() {
     var cWidth = c.width;
