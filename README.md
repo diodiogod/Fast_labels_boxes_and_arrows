@@ -43,6 +43,8 @@ You don't need to specify a output file, it will check and create automatically 
     * *yMax* - max y value of the bounding box
     * *Color* - hex clor value of the bounding box
     * *Type* - Box or Arrow annotation
+    * *xOffset* - individual label name xoffset (used to move it)
+    * *yOffset* - individual label name yoffset (used to move it)
 
 ## What is new to my project:
 
@@ -62,9 +64,18 @@ You don't need to specify a output file, it will check and create automatically 
 * A new tab to change (and it will persist) the rotating predefined labels and predefined colors (add, remove, change colors)
 * On the "Predefined labels" tab you can find some settings: Label font size %, Label Offset, Label Font Style, Reset to Defaults, Arrow head size, Arrow type (standard or triangle).
 * A crosshair while hoovering the image.
+* Adjust line Width (persistent).
+* A Side pannel resizer (persistent)
+* You can move freely the individual label name by simply dragging it.
+* You can also adjust both bounding boxes or arrows coordinates.
+* Save all images with annotations (zip file)
+* "Fit" image to screen button.
 
-
-## What is Missing?
+## What is Missing/problems?
 * First screen sometimes is blank, you need to move to the next image.
+* Sometimes with Firefox on fullscreen some images might not fit the canvas. You can either go to the next and back or "fit" to screen. Could not fix this. Edge doesn't have this bug.
+
+Future:
 * Drag and Drop with a shadow to create bounding boxes and also keep the two coordinates point click.
 * Maybe fix the goodbye screen at the end.
+* Do a intro screen

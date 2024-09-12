@@ -35,7 +35,7 @@
 
         #content {
             flex-grow: 1;
-            height: 100%;
+            height: calc(100% - 50px); /* Adjust the height to account for the zoom bar */
             overflow: hidden;
             display: flex;
             flex-direction: column;
@@ -43,10 +43,8 @@
 
 
 		#canvas {
-			flex-grow: 1;            /* Make canvas grow to fill available space */
 			width: 100%;             /* Ensure the canvas takes full width */
 			height: 100%;            /* Allow height to adjust based on content */
-            max-height: 100%; //(100vh - 40px); /* Ensure it doesn't overflow vertically */
             background-color: white; /* Optional: set a background */
             cursor: crosshair;
             object-fit: contain; /* Ensure the image fits within the canvas */
@@ -242,6 +240,7 @@
 
     <div class="right-buttons">
         <button id="resetButton" class="btn btn-primary">Reset to 100%</button>
+        <button id="fitButton" class="btn btn-primary" style="margin-left: 1px;">Fit</button>
         <button id="downloadButton" class="btn btn-success" style="margin-left: 10px;">Download Image</button>
         <button id="downloadAllImagesButton" class="btn btn-success" style="margin-left: 1px;">All</button>
         <button id="saveCsvButton" class="btn btn-warning" style="margin-left: 10px;">Save CSV</button>
@@ -267,6 +266,7 @@ var labelFontSizePercentage = 4.5; // Default value as 4.5%
 var arrowHeadSize = 4.5; // Default value as 4.5
 var labelOffsetX = 0; // Default horizontal offset (in pixels)
 var labelOffsetY = 0; // Default vertical offset (in pixels)
+var lineWidth = parseFloat(localStorage.getItem('lineWidth')) || 0.25; // Default line width
 
 var offsetX = 0, offsetY = 0;  // Track offsets for dragging
 
@@ -288,6 +288,9 @@ function resizeSidebar(e) {
         sidebar.style.width = `${newSidebarWidth}px`;
         content.style.width = `calc(100% - ${newSidebarWidth}px)`;
 
+        // Store the sidebar width in localStorage
+        localStorage.setItem('sidebarWidth', newSidebarWidth);
+
         // Redraw the canvas after resizing the sidebar
         resizeCanvas();
     }
@@ -295,8 +298,11 @@ function resizeSidebar(e) {
 
 // Add this function to stop resizing when the mouse is released
 function stopResizing() {
-    document.removeEventListener('mousemove', resizeSidebar);  // Stop the resize action
-    document.removeEventListener('mouseup', stopResizing);     // Remove the mouseup listener
+    document.removeEventListener('mousemove', resizeSidebar);
+    document.removeEventListener('mouseup', stopResizing);
+
+    // Store the current sidebar width in localStorage
+    localStorage.setItem('sidebarWidth', sidebar.style.width.replace('px', ''));
 }
 
 var predefinedLabels = [
@@ -307,17 +313,6 @@ var predefinedLabels = [
     { name: "Lemon", color: "#FF0000" }
 ];  // Add default predefined labels or load them from localStorage
 
-var lineWidth = parseFloat(localStorage.getItem('lineWidth')) || 0.25; // Default line width
-
-// Load the saved line width from local storage
-function loadLineWidth() {
-    const savedLineWidth = localStorage.getItem('lineWidth');
-    if (savedLineWidth !== null) {
-        lineWidth = parseFloat(savedLineWidth);
-        document.getElementById("lineWidthSlider").value = lineWidth;
-        document.getElementById("lineWidthInput").value = lineWidth;
-    }
-}
 
 // Sync the slider with the input field
 document.getElementById("lineWidthSlider").addEventListener("input", function() {
@@ -570,6 +565,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadPredefinedLabels();
     loadArrowHeadSize();
     loadArrowHeadType();  // Load arrow head type
+	loadLineWidth();
     initPredefinedLabels();
 });
 
@@ -591,35 +587,67 @@ function setInitialZoom() {
     document.getElementById('currentScale').innerText = `${Math.round(scale * 100)}%`; // Display scale
 }
 
+let imageLoaded = false;  // Track if the image has fully loaded
+
+let retryCount = 0;
+const maxRetries = 10;
+
 // Ensure the canvas dimensions are set properly
 function setCanvasDimensions() {
-    const container = document.getElementById('content');
-    const canvas = document.getElementById('canvas');
     
-    // Ensure originalWidth and originalHeight are set
-    if (!originalWidth || !originalHeight) {
-        console.error("Image dimensions are not available. Make sure the image has loaded.");
-        return;
-    }
+    ensureParentDimensions(); // Ensure parent size is set before resizing canvas
 
-    // Get the container's dimensions
-    const containerWidth = container.clientWidth;
-    const containerHeight = container.clientHeight;
+    // Only set dimensions if the image has been loaded
+    if (image.naturalWidth && image.naturalHeight) {
+        originalWidth = image.naturalWidth;
+        originalHeight = image.naturalHeight;
 
-    // Maintain the image aspect ratio
-    const aspectRatio = originalWidth / originalHeight;
+        // Get the container's width and height
+        const containerWidth = content.clientWidth;
+        const containerHeight = content.clientHeight;
 
-    if (containerWidth / containerHeight > aspectRatio) {
-        canvas.height = containerHeight;
-        canvas.width = containerHeight * aspectRatio;
+        // Calculate aspect ratio and determine canvas size to fit the container
+        const aspectRatio = originalWidth / originalHeight;
+        let canvasWidth = containerWidth;
+        let canvasHeight = canvasWidth / aspectRatio;
+
+        // Ensure the height fits within the container height
+        if (canvasHeight > containerHeight) {
+            canvasHeight = containerHeight;
+            canvasWidth = canvasHeight * aspectRatio;
+        }
+
+        // Prevent setting height to zero or too small values
+        if (canvasHeight < 100) {
+            console.warn("Canvas height is too small, adjusting...");
+            canvasHeight = containerHeight; // Set to full container height as a fallback
+        }
+
+        // Set canvas size explicitly
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+
+        console.log("Canvas resized to by setCanvasDimensions:", canvasWidth, canvasHeight);
+
+        // If the image is fully loaded, initialize canvas drawing
+        if (!imageLoaded) {
+            initializeCanvasWithImage(image);  // Draw image once dimensions are correct
+            imageLoaded = true;  // Mark that the image has been drawn
+        } else {
+            // Redraw the canvas after resizing if already loaded
+            resizeCanvas();  // Ensures everything is redrawn properly
+        }
     } else {
-        canvas.width = containerWidth;
-        canvas.height = containerWidth / aspectRatio;
+        console.log("Image dimensions are not available. Retry resizing. by setCanvasDimensions");
+        if (retryCount < maxRetries) {
+            retryCount++;
+            setTimeout(setCanvasDimensions, 100);  // Retry after 100ms
+        } else {
+            console.log("Maximum retries reached. Could not set canvas dimensions.");
+        }
     }
-
-    // Redraw canvas content after resizing
-    resizeCanvas();
 }
+
 
 // Add mouse event listeners to the canvas (after canvas is defined)
 let selectedLabel = null;
@@ -630,14 +658,30 @@ let suppressClick = false;  // Flag to suppress clicks after dragging
 
 const DRAG_THRESHOLD = 5; // Threshold in pixels
 
-// Function to detect if a label is clicked
 function isLabelClicked(label, x, y, scale, offsetX, offsetY) {
+    const ctx = canvas.getContext("2d");
     const fontSize = (labelFontSizePercentage / 100) * originalWidth * scale;
-    const labelX = (label.xMin * scale) + offsetX + (label.xOffset * scale);
-    const labelY = (label.yMin * scale) + offsetY + (label.yOffset * scale);
+    const text = label.name;
+    
+    // Set the font to match the label's size and type
+    ctx.font = `${fontSize}px ${labelFont}`;
 
-    // Check if the click is within the label area (adjust based on font size)
-    return (x >= labelX && x <= labelX + fontSize * 5) && (y >= labelY - fontSize && y <= labelY);
+    // Measure the text width and height
+    const textMetrics = ctx.measureText(text);
+    const textWidth = textMetrics.width;
+
+    // Use font bounding box if available, or default to fontSize for the height
+    const textHeight = (textMetrics.fontBoundingBoxAscent + textMetrics.fontBoundingBoxDescent) || fontSize;
+
+    // Calculate the label's position including the global offsets
+    const labelX = (label.xMin * scale) + offsetX + (labelOffsetX / 1000) * originalWidth * scale + (label.xOffset * scale);
+    const labelY = (label.yMin * scale) + offsetY + (labelOffsetY / 1000) * originalHeight * scale + (label.yOffset * scale);
+
+    // Adjust the bounding box by reducing the top padding
+    const topPaddingReduction = textMetrics.fontBoundingBoxAscent * 0.5 || fontSize * 0.5;  // Reduce top padding by 30%
+
+    // Check if the click is within the label's text bounding box, applying padding reduction for the top
+    return (x >= labelX && x <= labelX + textWidth) && (y >= labelY - textHeight + topPaddingReduction && y <= labelY);
 }
 
 // Function to add event listeners to handle mouse interactions on the canvas
@@ -698,14 +742,31 @@ function addCanvasEventListeners() {
 
 		// Change cursor style if hovering over a label or edge
 		if (hoveringOverLabel) {
-			c.style.cursor = 'pointer';
-		} else if (hoveringOverEdge) {
-			if (edgeType.includes('top') || edgeType.includes('bottom')) {
-				c.style.cursor = 'nwse-resize';  // Example for corner edges
-			}
-		} else {
-			c.style.cursor = 'crosshair';
-		}
+			c.style.cursor = 'grab';
+        } else if (hoveringOverEdge) {
+            switch (edgeType) {
+                case 'top':
+                case 'bottom':
+                    c.style.cursor = 'ns-resize';  // Vertical resize cursor
+                    break;
+                case 'left':
+                case 'right':
+                    c.style.cursor = 'ew-resize';  // Horizontal resize cursor
+                    break;
+                case 'top-left':
+                case 'bottom-right':
+                    c.style.cursor = 'nwse-resize';  // Diagonal resize cursor (top-left to bottom-right)
+                    break;
+                case 'top-right':
+                case 'bottom-left':
+                    c.style.cursor = 'nesw-resize';  // Diagonal resize cursor (top-right to bottom-left)
+                    break;
+                default:
+                    c.style.cursor = 'alias';
+            }
+        } else {
+            c.style.cursor = 'crosshair';
+        }
 
 		// Handle dragging logic
 		if (isDraggingLabel && selectedLabel) {
@@ -757,7 +818,7 @@ function addCanvasEventListeners() {
             // Save updated label offsets to the server
             fetch(`/label/${selectedLabel.id}?xOffset=${selectedLabel.xOffset}&yOffset=${selectedLabel.yOffset}`)
                 .then(response => response.text())
-                .then(data => console.log("Label offsets updated:", data))
+                .then(data => console.log("Label offsets updated:"))
                 .catch(error => console.error("Error updating label offsets:", error));
 
             selectedLabel = null;
@@ -794,7 +855,7 @@ function addCanvasEventListeners() {
             // Save the updated coordinates after dragging
             fetch(`/label/${selectedLabel.id}?xMin=${selectedLabel.xMin}&xMax=${selectedLabel.xMax}&yMin=${selectedLabel.yMin}&yMax=${selectedLabel.yMax}`)
                 .then(response => response.text())
-                .then(data => console.log("Bounding box/arrow coordinates updated:", data))
+                .then(data => console.log("Bounding box/arrow coordinates updated"))
                 .catch(error => console.error("Error updating coordinates:", error));
 
             selectedLabel = null;
@@ -804,11 +865,14 @@ function addCanvasEventListeners() {
     });
 }
 
-    // Add window resize listener
+// Add window resize listener
 window.addEventListener('resize', () => {
-    setCanvasDimensions();  // Redraw canvas when screen size changes
-    resizeCanvas();         // Ensure all elements resize correctly
+    setCanvasDimensions();  // Recalculate canvas dimensions
+    resizeCanvas();         // Redraw the image and labels
 });
+
+// Set initial canvas dimensions when the page loads
+setCanvasDimensions();
 
 // Function to create a new label and attach it to the labels array
 function createNewLabel(labelData) {
@@ -849,20 +913,33 @@ function createLabel(xMin, yMin, xMax, yMax, color, name) {
 }
 
 
-
-window.addEventListener('resize', setCanvasDimensions);
-setCanvasDimensions();
-
-// Function to initialize the canvas and draw the image and labels
+// Resize canvas and force redraw image and labels
 function resizeCanvas() {
+    ensureParentDimensions();  // Make sure the parent container is properly sized
+
     const ctx = canvas.getContext('2d');
+
+    // Ensure the canvas dimensions are correct before drawing
+    if (canvas.width <= 0 || canvas.height <= 0) {
+        console.warn("Canvas has invalid dimensions, skipping drawing.");
+        return;  // Skip if canvas dimensions are incorrect
+    }
 
     // Ensure the canvas fills the entire available space
     canvas.width = canvas.parentElement.clientWidth;
     canvas.height = canvas.parentElement.clientHeight;
 
+    // Prevent canvas height from being too small
+    if (canvas.height < 100) {
+        console.warn("Canvas height is too small, adjusting... by resizeCanvas");
+        canvas.height = canvas.parentElement.clientHeight;  // Fallback height
+    }
+
     // Clear the canvas before redrawing
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Log the current canvas dimensions
+    console.log("Canvas resized to by resizeCanvas:", canvas.width, canvas.height);
 
     // Check if the image is loaded and draw it
     if (image.complete && originalWidth && originalHeight) {
@@ -873,12 +950,25 @@ function resizeCanvas() {
         // Draw the image on the canvas
         ctx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
 
-		// Redraw all labels
-		labels.forEach(label => {
-			drawLabels(ctx, label, scale, offsetX, offsetY);
-		});
+        // Redraw all labels
+        labels.forEach(label => {
+            drawLabels(ctx, label, scale, offsetX, offsetY);
+            //console.log("debug:label drawn by resizeCanvas");
+        });
+        //console.log("debug:image draw on the canvas by resizeCanvas");
     } else {
-        console.error("Image not loaded yet.");
+        console.error("Image not loaded yet. by resizeCanvas");
+    }
+}
+
+// Ensure the parent container has the correct height
+function ensureParentDimensions() {
+    const parent = canvas.parentElement;
+
+    // Use window height if the parent height is too small
+    if (parent.clientHeight < 100) {
+        console.warn("Parent container height too small, adjusting by ensureParentDimensions...");
+        parent.style.height = `${window.innerHeight}px`;  // Set to full window height if needed
     }
 }
 
@@ -936,17 +1026,28 @@ function initializeCanvasWithImage(image) {
     window.addEventListener('resize', resizeCanvas);
 }
 
-image.onload = function() {
-    originalWidth = image.width;
-    originalHeight = image.height;
-    // Set canvas dimensions based on the loaded image
-    setCanvasDimensions();
-    
-    // Calculate the initial zoom scale to fit the image within the canvas
-    setInitialZoom();
 
-    // Draw the image on the canvas for the first time
-    resizeCanvas();
+image.onload = function() {
+
+    // Ensure the image dimensions are properly retrieved
+    if (image.naturalWidth && image.naturalHeight) {
+        imageLoaded = false;  // Reset the flag
+        originalWidth = image.naturalWidth;
+        originalHeight = image.naturalHeight;
+
+        console.log("Image loaded. Dimensions: ", originalWidth, originalHeight);
+
+        // Set canvas dimensions based on the loaded image
+        setCanvasDimensions();
+        
+        // Calculate the initial zoom scale to fit the image within the canvas
+        setInitialZoom();
+
+        // Draw the image on the canvas for the first time
+        resizeCanvas();
+    } else {
+        console.log("Image dimensions are not available.");
+    }
 };
 
 document.getElementById('resizeSlider').addEventListener('input', function() {
@@ -964,6 +1065,19 @@ document.getElementById('resetButton').addEventListener('click', function() {
     resizeCanvas();  // Redraw the canvas with the reset values
 });
 
+// Add event listener for the "Fit" button
+document.getElementById('fitButton').addEventListener('click', function() {
+    // Reset zoom to fit the image on the screen
+    // Calculate the initial zoom scale to fit the image within the canvas
+    offsetX = 0;  // Reset horizontal offset
+    offsetY = 0;  // Reset vertical offset
+    setInitialZoom();
+
+    // Draw the image on the canvas for the first time
+    setCanvasDimensions();
+
+    console.log("Image zoomed to fit the screen.");
+});
 
 document.getElementById('downloadButton').addEventListener('click', function() {
     // Create a new canvas with the same dimensions as the original image
@@ -1173,7 +1287,7 @@ function getAdjustedCoordinates(e) {
 }
 
 // new function to drag coordinates... Define the "Clickable" Areas for Bounding Boxes and Arrows
-const EDGE_THRESHOLD = 10;  // The area within which the edge is draggable
+const EDGE_THRESHOLD = 5;  // The area within which the edge is draggable
 let isDraggingEdge = false;
 let draggedEdge = null;  // Keeps track of which corner/edge is being dragged
 
@@ -1490,7 +1604,25 @@ function loadArrowHeadSize() {
     }
 }
 
+document.getElementById("lineWidthInput").addEventListener("input", function() {
+    lineWidth = parseFloat(this.value); // Update
+    localStorage.setItem('lineWidth', lineWidth); // Save to lineWidth
+    resizeCanvas();  // Redraw the canvas with the new lineWidth
+});
 
+// Function to load lineWidth from localStorage
+function loadLineWidth() {
+    const savedLineWidth = localStorage.getItem('lineWidth');
+    if (savedLineWidth) {
+        lineWidth = parseFloat(savedLineWidth);
+        document.getElementById("lineWidthInput").value = lineWidth; // Update the input field
+        document.getElementById("lineWidthSlider").value = lineWidth; // Update the slider
+    } else {
+        lineWidth = 0.25; // Default value
+    }
+}
+
+// Function to reset everything to default, including line width
 function resetPredefinedLabelsToDefault() {
     // Reset predefined labels to default
     predefinedLabels = [
@@ -1504,9 +1636,9 @@ function resetPredefinedLabelsToDefault() {
     // Reset label font size to default
     labelFontSizePercentage = 4.5;
     document.getElementById("labelFontSizeInput").value = labelFontSizePercentage;
-	
-    // Reset arrow head size to default
-    arrowHeadSize = 4,5;
+
+    // Reset arrow head size to default (use dot, not comma)
+    arrowHeadSize = 4.5;
     document.getElementById("arrowHeadSizeInput").value = arrowHeadSize;
 
     // Reset label offsets to default
@@ -1519,6 +1651,11 @@ function resetPredefinedLabelsToDefault() {
     labelFont = "Verdana";
     document.getElementById("fontSelect").value = labelFont;
 
+    // Reset line width to default
+    lineWidth = 0.25;
+    document.getElementById("lineWidthInput").value = lineWidth;
+    document.getElementById("lineWidthSlider").value = lineWidth;
+
     // Save the updated defaults to localStorage
     savePredefinedLabels();
     localStorage.setItem('labelFontSizePercentage', labelFontSizePercentage);
@@ -1526,7 +1663,8 @@ function resetPredefinedLabelsToDefault() {
     localStorage.setItem('labelOffsetY', labelOffsetY);
     localStorage.setItem('labelFont', labelFont);
     localStorage.setItem('arrowHeadSize', arrowHeadSize);
-	
+    localStorage.setItem('lineWidth', lineWidth);
+
     // Re-initialize the predefined labels panel to reflect the default values
     initPredefinedLabels();
 
@@ -1627,7 +1765,6 @@ document.getElementById("arrowHeadSizeInput").addEventListener("input", function
     localStorage.setItem('arrowHeadSize', arrowHeadSize);
     resizeCanvas();  // Redraw the canvas with the new arrow size
 });
-
 
 </script>
 
