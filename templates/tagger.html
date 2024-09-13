@@ -50,6 +50,21 @@
             object-fit: contain; /* Ensure the image fits within the canvas */
             object-position: top left; /* Align the image to the top-left */
         }
+		
+		#downloadProgressContainer {
+			display:none;
+			position: absolute;
+			bottom: 80px;  /* Adjust this to move the popup higher or lower */
+			left: 50%;
+			transform: translateX(-50%);
+			z-index: 9999;  /* Ensure it stays on top of other elements */
+			background-color: white;
+			padding: 10px;
+			border: 1px solid #ccc;
+			box-shadow: 0px 4px 6px rgba(0, 0, 0, 0.1);
+			width: 250px;
+			text-align: center;
+		}
 
         #zoomControls {
             position: fixed;
@@ -219,6 +234,12 @@
 
     </div>
 </nav>
+<div id="downloadProgressContainer">
+    <label for="downloadProgress">Download Progress:</label>
+    <progress id="downloadProgress" value="0" max="100" style="width:100%;"></progress>
+    <span id="downloadProgressText">0%</span>
+</div>
+
 <div id="resizer"></div>
 <div id="content" class="container">
 
@@ -279,6 +300,41 @@ resizer.addEventListener('mousedown', function(e) {
 
     document.addEventListener('mousemove', resizeSidebar);
     document.addEventListener('mouseup', stopResizing); // Attach the stopResizing listener
+});
+
+let clickStartX = 0;
+let clickStartY = 0;
+let isClickDrag = false;  // To detect dragging for click suppression
+const CLICK_DRAG_THRESHOLD = 5;  // Threshold in pixels for dragging
+
+c.addEventListener('mousedown', (event) => {
+    const canvasBounds = c.getBoundingClientRect();
+    clickStartX = event.clientX - canvasBounds.left;
+    clickStartY = event.clientY - canvasBounds.top;
+    isClickDrag = false;  // Reset dragging state for click
+});
+
+c.addEventListener('mousemove', (event) => {
+    const canvasBounds = c.getBoundingClientRect();
+    const currentMouseX = event.clientX - canvasBounds.left;
+    const currentMouseY = event.clientY - canvasBounds.top;
+
+    // Calculate the distance the mouse has moved
+    const distanceMoved = Math.sqrt(Math.pow(currentMouseX - clickStartX, 2) + Math.pow(currentMouseY - clickStartY, 2));
+
+    // If the movement exceeds the threshold, set suppressClick to true
+    if (distanceMoved > CLICK_DRAG_THRESHOLD) {
+        suppressClick = true;
+        isClickDrag = true;
+    }
+});
+
+c.addEventListener('mouseup', (event) => {
+    if (isClickDrag) {
+        suppressClick = true;  // Suppress click if dragging occurred
+    } else {
+        suppressClick = false;  // Allow click if no dragging occurred
+    }
 });
 
 function resizeSidebar(e) {
@@ -1145,7 +1201,11 @@ document.getElementById('downloadAllImagesButton').addEventListener('click', fun
     var imageCounter = 0;  // Counter to track processed images
     var validImageCount = 0;  // To track valid images for downloading
 
-    console.log("Download button clicked");  // Log button click
+    // Display the progress container
+    var progressContainer = document.getElementById('downloadProgressContainer');
+    var progressBar = document.getElementById('downloadProgress');
+    var progressText = document.getElementById('downloadProgressText');
+    progressContainer.style.display = 'block';
 
     var userConfirmed = confirm("This will download all images with annotations. It might take some time. Do you want to continue?");
     
@@ -1213,30 +1273,47 @@ document.getElementById('downloadAllImagesButton').addEventListener('click', fun
             imageCounter++;
             console.log(`Image added to zip: ${imageFileName}, Counter: ${imageCounter}`);
 
+            // Update the progress bar and text
+            var progressPercent = Math.round((imageCounter / validImageCount) * 100);
+            progressBar.value = progressPercent;
+            progressText.textContent = `${progressPercent}%`;
+
             // Once all images are processed, generate the ZIP file
             if (imageCounter === validImageCount) {
                 console.log("All valid images processed, generating zip file");
-                zip.generateAsync({type: "blob"})
-                    .then(function(content) {
-                        console.log("Zip file generated successfully");
 
-                        // Create a downloadable link for the ZIP file
-                        var blobURL = URL.createObjectURL(content);
-                        var link = document.createElement('a');
-                        link.href = blobURL;
-                        link.download = 'all_annotated_images.zip';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                    })
-                    .catch(function(error) {
-                        console.error("Error generating zip file: ", error);
-                    });
+                // Show progress for ZIP file generation
+                zip.generateAsync({type: "blob"}, function(metadata) {
+                    var zipProgressPercent = Math.round(metadata.percent);
+                    progressBar.value = zipProgressPercent;
+                    progressText.textContent = `ZIP Generation: ${zipProgressPercent}%`;
+
+                    if (metadata.currentFile) {
+                        console.log(`Adding file: ${metadata.currentFile}`);
+                    }
+                })
+                .then(function(content) {
+                    console.log("Zip file generated successfully");
+
+                    // Create a downloadable link for the ZIP file
+                    var blobURL = URL.createObjectURL(content);
+                    var link = document.createElement('a');
+                    link.href = blobURL;
+                    link.download = 'all_annotated_images.zip';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    // Hide progress bar after download is complete
+                    progressContainer.style.display = 'none';
+                })
+                .catch(function(error) {
+                    console.error("Error generating zip file: ", error);
+                });
             }
         });
     });
 });
-
 
 
 function loadImageAndAnnotations(imageFileName, callback) {
@@ -1327,7 +1404,7 @@ function getAdjustedCoordinates(e) {
 }
 
 // new function to drag coordinates... Define the "Clickable" Areas for Bounding Boxes and Arrows
-const EDGE_THRESHOLD = 5;  // The area within which the edge is draggable
+const EDGE_THRESHOLD = 8;  // The area within which the edge is draggable
 let isDraggingEdge = false;
 let draggedEdge = null;  // Keeps track of which corner/edge is being dragged
 
@@ -1424,11 +1501,13 @@ c.addEventListener('mousemove', (event) => {
 
 c.onclick = function(e) {
     // If suppressClick is true, reset it and return to avoid creating a new label
+
     if (suppressClick) {
-        suppressClick = false;
+        suppressClick = false;  // Reset for future clicks
         return;
     }
-	
+
+    // Your existing label creation logic goes here
     const { x, y } = getAdjustedCoordinates(e);
 
     // Check if the click is inside the image boundaries
